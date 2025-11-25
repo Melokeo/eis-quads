@@ -262,6 +262,10 @@ class SlideWindow(QWidget):
                 self.should_save = False
                 TaskManager.restore_backup()
                 QApplication.instance().quit()
+            elif self.key_buffer.endswith("recover"):
+                TaskManager.restore_backup()
+                self.content.reload_tasks()
+                self.key_buffer = ""
 
     def closeEvent(self, event):
         # save current position before closing

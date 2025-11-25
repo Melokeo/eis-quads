@@ -1,6 +1,6 @@
 import uuid
 from PyQt6.QtCore import Qt, QPoint, QPointF
-from PyQt6.QtGui import QColor, QPainter, QPen, QFont, QCursor, QPainterPath
+from PyQt6.QtGui import QColor, QPainter, QPen, QFont, QCursor, QPainterPath, QPainterPathStroker
 from PyQt6.QtWidgets import QWidget, QPushButton, QDialog, QFrame
 from config import UiConfig
 from models import Task, TaskManager
@@ -45,6 +45,29 @@ class MatrixCanvas(QFrame):
         
     def mouseDoubleClickEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
+            # Check if we clicked on a dependency line
+            click_pos = event.pos()
+            dot_map = {d.task.id: d for d in self.dots}
+            
+            for dot in self.dots:
+                start_center = dot.get_dot_center()
+                for dep_id in dot.task.dependencies:
+                    if dep_id in dot_map:
+                        end_dot = dot_map[dep_id]
+                        end_center = end_dot.get_dot_center()
+                        
+                        path = self.get_arrow_path(end_center, start_center)
+                        stroker = QPainterPathStroker()
+                        stroker.setWidth(10) # Hit tolerance
+                        outline = stroker.createStroke(path)
+                        
+                        if outline.contains(QPointF(click_pos)):
+                            self.push_undo('unlink')
+                            dot.task.dependencies.remove(dep_id)
+                            self.save_data()
+                            self.overlay.update()
+                            return
+
             # normalize coordinates 0.0 - 1.0
             nx = event.pos().x() / self.width()
             ny = event.pos().y() / self.height()
@@ -281,7 +304,7 @@ class MatrixCanvas(QFrame):
             start = self.temp_link_start.get_dot_center()
             self.draw_curved_arrow(painter, start, self.temp_link_end)
 
-    def draw_curved_arrow(self, painter, start, end):
+    def get_arrow_path(self, start, end):
         start = QPointF(start)
         end = QPointF(end)
         path = QPainterPath()
@@ -293,13 +316,21 @@ class MatrixCanvas(QFrame):
         # control point for curve
         ctrl = QPointF(start.x() + dx * 0.5, start.y())
         path.quadTo(ctrl, end)
-        
+        return path
+
+    def draw_curved_arrow(self, painter, start, end):
+        path = self.get_arrow_path(start, end)
         painter.drawPath(path)
         
         # arrowhead
         # calculate angle at end
         # derivative of quad bezier at t=1 is 2(P2 - P1) where P1 is ctrl, P2 is end
         # actually it's 2(1-t)(P1-P0) + 2t(P2-P1). At t=1, it's 2(P2-P1)
+        
+        start = QPointF(start)
+        end = QPointF(end)
+        dx = end.x() - start.x()
+        ctrl = QPointF(start.x() + dx * 0.5, start.y())
         
         arrow_dx = end.x() - ctrl.x()
         arrow_dy = end.y() - ctrl.y()
