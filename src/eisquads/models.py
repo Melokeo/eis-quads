@@ -31,16 +31,32 @@ class TaskManager:
         try:
             with open(file_path, 'r') as f:
                 data = json.load(f)
-                # filter out completed tasks, they are history
                 all_tasks = [Task(**t) for t in data]
-                active_tasks = [t for t in all_tasks if not t.completed]
                 
-                # clean up dependencies pointing to non-existent (or completed) tasks
-                active_ids = {t.id for t in active_tasks}
-                for t in active_tasks:
-                    t.dependencies = [d for d in t.dependencies if d in active_ids]
+                # Identify tasks that are depended upon by others
+                depended_upon_ids = set()
+                for t in all_tasks:
+                    for dep_id in t.dependencies:
+                        depended_upon_ids.add(dep_id)
+
+                tasks_to_keep = []
+                for t in all_tasks:
+                    if not t.completed:
+                        tasks_to_keep.append(t)
+                    else:
+                        # Keep completed task if it is part of a dependency chain (in or out)
+                        has_outgoing = len(t.dependencies) > 0
+                        has_incoming = t.id in depended_upon_ids
+                        
+                        if has_outgoing or has_incoming:
+                            tasks_to_keep.append(t)
+                
+                # Clean up dependencies pointing to removed tasks
+                kept_ids = {t.id for t in tasks_to_keep}
+                for t in tasks_to_keep:
+                    t.dependencies = [d for d in t.dependencies if d in kept_ids]
                     
-                return active_tasks
+                return tasks_to_keep
         except:
             return []
 
