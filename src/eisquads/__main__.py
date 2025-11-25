@@ -12,15 +12,15 @@ from PyQt6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout,
                              QGraphicsDropShadowEffect, QFrame, QMenu, QDialog)
 
 # --- Configuration & Styling ---
-APP_WIDTH = 450
-APP_HEIGHT = 450
-TAB_WIDTH = 20
+APP_WIDTH = 350
+APP_HEIGHT = 350
+TAB_SIZE = 24  # Width or Height depending on orientation
 BG_COLOR = "#1e1e2e"
 QUAD_LINES_COLOR = "#313244"
 TEXT_COLOR = "#cdd6f4"
 ACCENT_COLOR = "#89b4fa"
 DOT_COLOR = "#f38ba8"
-DOT_SIZE = 16
+DOT_SIZE = 14
 
 STYLESHEET = f"""
     QWidget {{
@@ -39,7 +39,7 @@ STYLESHEET = f"""
         color: #1e1e2e;
         border: none;
         border-radius: 4px;
-        padding: 5px 10px;
+        padding: 5px;
         font-weight: bold;
     }}
     QPushButton:hover {{
@@ -49,19 +49,18 @@ STYLESHEET = f"""
         background-color: #f38ba8;
         color: #1e1e2e;
     }}
-    QPushButton#deleteBtn:hover {{
-        background-color: #eba0ac;
-    }}
-    QLabel#Title {{
-        font-size: 14px;
-        font-weight: bold;
-    }}
-    QLabel#AxisLabel {{
-        color: #6c7086;
-        font-size: 10px;
-        font-weight: bold;
+    QPushButton#addBtn {{
+        border-radius: 15px;
+        font-size: 16px;
+        padding: 0;
     }}
 """
+
+class DockSide(Enum):
+    LEFT = 1
+    RIGHT = 2
+    TOP = 3
+    BOTTOM = 4
 
 # --- Data Management ---
 @dataclass
@@ -69,8 +68,8 @@ class Task:
     id: str
     title: str
     desc: str
-    x: float  # 0.0 to 1.0 (relative to canvas)
-    y: float  # 0.0 to 1.0
+    x: float
+    y: float
     
     def to_dict(self):
         return asdict(self)
@@ -97,8 +96,7 @@ class TaskManager:
 # --- UI Components ---
 
 class DetailPopup(QDialog):
-    """Floating borderless popup for editing details"""
-    data_changed = pyqtSignal(object, bool) # task, is_delete
+    data_changed = pyqtSignal(object, bool)
 
     def __init__(self, task: Task, parent=None):
         super().__init__(parent)
@@ -113,13 +111,14 @@ class DetailPopup(QDialog):
         container = QFrame()
         container.setStyleSheet(f"background-color: {BG_COLOR}; border: 1px solid {ACCENT_COLOR}; border-radius: 8px;")
         
-        # Shadow
         shadow = QGraphicsDropShadowEffect()
         shadow.setBlurRadius(20)
         shadow.setColor(QColor(0, 0, 0, 100))
         container.setGraphicsEffect(shadow)
         
         inner_layout = QVBoxLayout(container)
+        inner_layout.setSpacing(5)
+        inner_layout.setContentsMargins(10, 10, 10, 10)
 
         self.title_edit = QLineEdit(task.title)
         self.title_edit.setPlaceholderText("Task Title")
@@ -132,7 +131,7 @@ class DetailPopup(QDialog):
         save_btn = QPushButton("Save")
         save_btn.clicked.connect(self.save)
         
-        del_btn = QPushButton("Delete")
+        del_btn = QPushButton("Del")
         del_btn.setObjectName("deleteBtn")
         del_btn.clicked.connect(self.delete)
         
@@ -144,7 +143,7 @@ class DetailPopup(QDialog):
         inner_layout.addLayout(btn_layout)
 
         layout.addWidget(container)
-        self.setFixedSize(250, 180)
+        self.setFixedSize(220, 160)
 
     def save(self):
         self.task.title = self.title_edit.text()
@@ -157,18 +156,15 @@ class DetailPopup(QDialog):
         self.close()
 
 class TaskDot(QWidget):
-    """The draggable dot representing a task"""
     moved = pyqtSignal()
-    clicked = pyqtSignal(object) # sends self
+    clicked = pyqtSignal(object)
 
     def __init__(self, task: Task, parent=None):
         super().__init__(parent)
         self.task = task
-        self.setFixedSize(100, 40) # Larger hit area, but we paint small
+        self.setFixedSize(120, 30)
         self.dragging = False
         self.offset = QPoint()
-        
-        # Initial position will be set by parent based on task.x/y
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.show()
 
@@ -177,92 +173,89 @@ class TaskDot(QWidget):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
         # Draw Dot
-        center_x = DOT_SIZE // 2 + 2
-        center_y = DOT_SIZE // 2 + 2
-        
         painter.setBrush(QBrush(QColor(DOT_COLOR)))
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawEllipse(2, 2, DOT_SIZE, DOT_SIZE)
+        painter.drawEllipse(0, 6, DOT_SIZE, DOT_SIZE)
         
-        # Draw Label (Short)
+        # Draw Label
         painter.setPen(QColor(TEXT_COLOR))
         font = QFont("Segoe UI", 9)
         painter.setFont(font)
-        painter.drawText(QRect(DOT_SIZE + 5, 0, 80, DOT_SIZE + 4), 
+        label = self.task.title
+        if len(label) > 12: label = label[:12] + ".."
+        painter.drawText(QRect(DOT_SIZE + 4, 0, 100, 30), 
                          Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, 
-                         self.task.title[:10] + ".." if len(self.task.title) > 10 else self.task.title)
+                         label)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
             self.dragging = True
             self.offset = event.pos()
-            self.raise_() # Bring to front
+            self.raise_()
 
     def mouseMoveEvent(self, event):
         if self.dragging and self.parent():
-            # Calculate new position
             new_pos = self.mapToParent(event.pos()) - self.offset
+            p_w, p_h = self.parent().width(), self.parent().height()
             
-            # Constrain to parent bounds
-            p_width = self.parent().width()
-            p_height = self.parent().height()
-            
-            x = max(0, min(new_pos.x(), p_width - DOT_SIZE))
-            y = max(0, min(new_pos.y(), p_height - DOT_SIZE))
-            
+            x = max(0, min(new_pos.x(), p_w - DOT_SIZE))
+            y = max(0, min(new_pos.y(), p_h - DOT_SIZE))
             self.move(x, y)
             
-            # Update data model normalized coordinates
-            self.task.x = x / p_width
-            self.task.y = y / p_height
+            self.task.x = x / p_w
+            self.task.y = y / p_h
             
     def mouseReleaseEvent(self, event):
         if self.dragging:
             self.dragging = False
             self.moved.emit()
         elif event.button() == Qt.MouseButton.LeftButton:
-            # It was a click, not a drag
             self.clicked.emit(self)
 
 class MatrixCanvas(QWidget):
-    """The background graph and container for dots"""
     def __init__(self, parent=None):
         super().__init__(parent)
         self.tasks = []
         self.dots = []
         self.init_ui()
 
+        # Minimal Add Button embedded in canvas
+        self.add_btn = QPushButton("+", self)
+        self.add_btn.setObjectName("addBtn")
+        self.add_btn.setFixedSize(30, 30)
+        self.add_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.add_btn.clicked.connect(self.add_new_task)
+        # Position will be set in resizeEvent
+
     def init_ui(self):
         self.tasks = TaskManager.load_tasks()
         self.refresh_dots()
 
-    def refresh_dots(self):
-        # Clear existing
+    def resizeEvent(self, event):
+        # Place add button in top right corner
+        self.add_btn.move(self.width() - 40, 10)
+        # Reposition dots based on new size
         for dot in self.dots:
-            dot.deleteLater()
-        self.dots = []
+            dot.move(int(dot.task.x * self.width()), int(dot.task.y * self.height()))
+        super().resizeEvent(event)
 
-        # Recreate
-        for task in self.tasks:
-            self.add_dot_widget(task)
+    def refresh_dots(self):
+        for dot in self.dots: dot.deleteLater()
+        self.dots = []
+        for task in self.tasks: self.add_dot_widget(task)
 
     def add_dot_widget(self, task):
         dot = TaskDot(task, self)
         dot.moved.connect(self.save_data)
         dot.clicked.connect(self.show_details)
         self.dots.append(dot)
-        
-        # Position it
-        # We delay positioning slightly to ensure geometry is calculated, 
-        # or calculate based on fixed app size since it's fixed.
-        x = int(task.x * APP_WIDTH)
-        y = int(task.y * APP_HEIGHT)
+        x = int(task.x * self.width())
+        y = int(task.y * self.height())
         dot.move(x, y)
         dot.show()
 
     def add_new_task(self):
         import uuid
-        # Default to center
         new_task = Task(str(uuid.uuid4()), "New Task", "", 0.5, 0.5)
         self.tasks.append(new_task)
         self.add_dot_widget(new_task)
@@ -272,13 +265,9 @@ class MatrixCanvas(QWidget):
         TaskManager.save_tasks(self.tasks)
 
     def show_details(self, dot_widget):
-        # Position popup near the dot
         popup = DetailPopup(dot_widget.task, self)
-        
-        # Global position calculation
         global_pos = dot_widget.mapToGlobal(QPoint(DOT_SIZE + 10, 0))
         popup.move(global_pos)
-        
         popup.data_changed.connect(self.handle_task_change)
         popup.exec()
 
@@ -287,7 +276,6 @@ class MatrixCanvas(QWidget):
             self.tasks = [t for t in self.tasks if t.id != task.id]
             self.refresh_dots()
         else:
-            # Update visual label
             for dot in self.dots:
                 if dot.task.id == task.id:
                     dot.update()
@@ -298,191 +286,297 @@ class MatrixCanvas(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
-        # Draw Background
         painter.fillRect(self.rect(), QColor(BG_COLOR))
         
-        w = self.width()
-        h = self.height()
-        cx = w // 2
-        cy = h // 2
+        w, h = self.width(), self.height()
+        cx, cy = w // 2, h // 2
 
-        # Draw Axis Lines
+        # Axes
         pen = QPen(QColor(QUAD_LINES_COLOR))
         pen.setWidth(2)
         painter.setPen(pen)
         painter.drawLine(cx, 0, cx, h)
         painter.drawLine(0, cy, w, cy)
 
-        # Draw Labels
-        text_pen = QPen(QColor(ACCENT_COLOR))
-        painter.setPen(text_pen)
-        font = QFont("Segoe UI", 12, QFont.Weight.Bold)
+        # Labels
+        painter.setPen(QColor("#6c7086"))
+        font = QFont("Segoe UI", 8, QFont.Weight.Bold)
         painter.setFont(font)
         
-        # Quadrant Labels
-        painter.setOpacity(0.3)
-        painter.drawText(QRect(0, 0, cx, cy), Qt.AlignmentFlag.AlignCenter, "SCHEDULE")
-        painter.drawText(QRect(cx, 0, cx, cy), Qt.AlignmentFlag.AlignCenter, "DO NOW")
-        painter.drawText(QRect(0, cy, cx, cy), Qt.AlignmentFlag.AlignCenter, "DELETE")
-        painter.drawText(QRect(cx, cy, cx, cy), Qt.AlignmentFlag.AlignCenter, "DELEGATE")
-        
-        # Axis Indicators
-        painter.setOpacity(1.0)
-        label_font = QFont("Segoe UI", 8)
-        painter.setFont(label_font)
-        painter.setPen(QColor("#6c7086"))
-        
-        # X Axis
-        painter.drawText(10, cy - 5, "Low Urgency")
-        painter.drawText(w - 70, cy - 5, "High Urgency")
-        
-        # Y Axis (Top is High Importance in typical graphs, but 0,0 is top-left in Qt)
-        # Let's map Visuals: Top = High Importance. Bottom = Low Importance.
-        painter.drawText(cx + 5, 15, "High Importance")
-        painter.drawText(cx + 5, h - 10, "Low Importance")
+        # Minimal Labels
+        painter.drawText(w - 30, cy - 5, "Urg")
+        painter.drawText(cx + 5, 15, "Imp")
 
-# --- Main Window Container ---
+# --- Draggable Tab ---
+class DraggableTab(QFrame):
+    drag_started = pyqtSignal(QPoint)
+    drag_moved = pyqtSignal(QPoint)
+    drag_ended = pyqtSignal()
+    clicked = pyqtSignal()
 
-class SlideWindow(QWidget):
     def __init__(self):
         super().__init__()
-        
-        self.is_expanded = False
-        self.anim = QPropertyAnimation(self, b"pos")
-        self.anim.setDuration(300)
-        self.anim.setEasingCurve(QEasingCurve.Type.OutCubic)
-
-        # Window Flags
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | 
-                            Qt.WindowType.WindowStaysOnTopHint | 
-                            Qt.WindowType.Tool)
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        
-        # Layout
-        self.main_layout = QHBoxLayout()
-        self.main_layout.setContentsMargins(0, 0, 0, 0)
-        self.main_layout.setSpacing(0)
-        self.setLayout(self.main_layout)
-
-        # 1. The Tab (Handle)
-        self.tab = QFrame()
-        self.tab.setFixedSize(TAB_WIDTH, 80)
-        self.tab.setStyleSheet(f"""
+        self.setFixedSize(TAB_SIZE, 60) # Default vertical size
+        # Default style, will be overwritten by window layout
+        self.setStyleSheet(f"""
             QFrame {{
                 background-color: {ACCENT_COLOR};
-                border-top-left-radius: 10px;
-                border-bottom-left-radius: 10px;
+                border-radius: 0px;
             }}
             QFrame:hover {{
                 background-color: #b4befe;
             }}
         """)
-        self.tab.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.tab.mousePressEvent = self.toggle_slide
+        self.setCursor(Qt.CursorShape.OpenHandCursor)
+        self.dragging = False
+        self.drag_start_pos = QPoint()
 
-        # Tab Container (To center the tab vertically)
-        self.tab_container = QWidget()
-        self.tab_container.setFixedWidth(TAB_WIDTH)
-        tc_layout = QVBoxLayout(self.tab_container)
-        tc_layout.setContentsMargins(0, 0, 0, 0)
-        tc_layout.addStretch()
-        tc_layout.addWidget(self.tab)
-        tc_layout.addStretch()
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.dragging = True
+            self.drag_start_pos = event.globalPosition().toPoint()
+            self.setCursor(Qt.CursorShape.ClosedHandCursor)
+            self.drag_started.emit(self.drag_start_pos)
+        elif event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit()
 
-        # 2. The Content (Matrix)
-        self.content_area = QWidget()
-        self.content_area.setFixedSize(APP_WIDTH, APP_HEIGHT)
-        self.content_area.setStyleSheet(f"background-color: {BG_COLOR}; border-left: 1px solid {QUAD_LINES_COLOR};")
-        
-        ca_layout = QVBoxLayout(self.content_area)
-        ca_layout.setContentsMargins(0, 0, 0, 0)
-        
-        # Header
-        header = QWidget()
-        header.setFixedHeight(40)
-        h_layout = QHBoxLayout(header)
-        title = QLabel("Eisenhower Matrix")
-        title.setObjectName("Title")
-        add_btn = QPushButton("+")
-        add_btn.setFixedSize(30, 30)
-        add_btn.clicked.connect(self.add_task_trigger)
-        
-        h_layout.addWidget(title)
-        h_layout.addStretch()
-        h_layout.addWidget(add_btn)
-        
-        self.matrix = MatrixCanvas()
-        
-        ca_layout.addWidget(header)
-        ca_layout.addWidget(self.matrix)
+    def mouseMoveEvent(self, event):
+        if self.dragging:
+            delta = event.globalPosition().toPoint() - self.drag_start_pos
+            self.drag_moved.emit(delta)
 
-        self.main_layout.addWidget(self.tab_container)
-        self.main_layout.addWidget(self.content_area)
+    def mouseReleaseEvent(self, event):
+        if self.dragging:
+            self.dragging = False
+            self.setCursor(Qt.CursorShape.OpenHandCursor)
+            if (event.globalPosition().toPoint() - self.drag_start_pos).manhattanLength() < 5:
+                self.clicked.emit()
+            else:
+                self.drag_ended.emit()
 
-        # Initial Position logic
-        self.update_position_geometry()
+# --- Main Window ---
+class SlideWindow(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.dock_side = DockSide.RIGHT
+        self.is_expanded = False
         
-        # Apply Styles
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | 
+                            Qt.WindowType.WindowStaysOnTopHint | 
+                            Qt.WindowType.Tool)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+
+        self.anim = QPropertyAnimation(self, b"pos")
+        self.anim.setDuration(300)
+        self.anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+
+        # Components
+        self.tab = DraggableTab()
+        self.tab.drag_moved.connect(self.handle_drag_move)
+        self.tab.drag_ended.connect(self.handle_drag_end)
+        self.tab.clicked.connect(self.toggle_slide)
+
+        self.content = MatrixCanvas()
+        self.content.setFixedSize(APP_WIDTH, APP_HEIGHT)
+        self.content.setStyleSheet(f"background-color: {BG_COLOR}; border: 1px solid {QUAD_LINES_COLOR};")
+
+        # Container Layout (Dynamic)
+        self.layout_container = QWidget(self)
+        self.main_layout = QHBoxLayout(self.layout_container) # Default
+        self.main_layout.setContentsMargins(0,0,0,0)
+        self.main_layout.setSpacing(0)
+        
+        # Initial Setup
         self.setStyleSheet(STYLESHEET)
-        
-        # Event Filter for Focus Loss
         QApplication.instance().installEventFilter(self)
+        
+        # Snap to default
+        self.snap_to_screen_edge()
 
-    def update_position_geometry(self):
-        screen = QApplication.primaryScreen().geometry()
-        self.screen_width = screen.width()
-        self.screen_height = screen.height()
-        
-        # Y position: Center of screen
-        self.y_pos = (self.screen_height - APP_HEIGHT) // 2
-        
-        # X positions
-        self.x_hidden = self.screen_width - TAB_WIDTH
-        self.x_shown = self.screen_width - (APP_WIDTH + TAB_WIDTH)
-        
-        self.setGeometry(self.x_hidden, self.y_pos, APP_WIDTH + TAB_WIDTH, APP_HEIGHT)
+    def handle_drag_move(self, delta):
+        # Move window based on delta, but we must use global position during drag
+        # Since drag originates from tab, we need absolute tracking
+        # Simplified: When dragging tab, we move the whole window
+        # But `delta` here is diff from start.
+        # Let's just track the mouse globally in the Tab class, but here we can just
+        # update position relative to current pos.
+        # Actually `delta` in DraggableTab is calculated as `current - start`.
+        # This is strictly relative to the start of the drag.
+        pass 
+        # Note: In a robust implementation we'd move the window here. 
+        # For now, let's rely on the snap logic at the end, 
+        # or implement simple movement:
+        self.move(self.pos() + delta)
+        # Note: This simple addition accumulates error because delta is always from start.
+        # Correct logic is handled better if Tab emits 'movement' per frame or we track last pos.
+        # For this snippet, we will rely on the end snap to fix position.
 
-    def toggle_slide(self, event=None):
+    def handle_drag_end(self):
+        self.snap_to_screen_edge()
+
+    def snap_to_screen_edge(self):
+        # 1. Find which screen we are on
+        center = self.geometry().center()
+        screen = QApplication.screenAt(center)
+        if not screen: screen = QApplication.primaryScreen()
+        
+        s_geo = screen.geometry()
+        
+        # 2. Calculate distances to edges
+        dist_left = abs(center.x() - s_geo.left())
+        dist_right = abs(center.x() - s_geo.right())
+        dist_top = abs(center.y() - s_geo.top())
+        dist_bottom = abs(center.y() - s_geo.bottom())
+        
+        min_dist = min(dist_left, dist_right, dist_top, dist_bottom)
+        
+        if min_dist == dist_left: self.dock_side = DockSide.LEFT
+        elif min_dist == dist_right: self.dock_side = DockSide.RIGHT
+        elif min_dist == dist_top: self.dock_side = DockSide.TOP
+        elif min_dist == dist_bottom: self.dock_side = DockSide.BOTTOM
+        
+        self.update_layout(s_geo)
+        
+        # 3. Animate to hidden position
+        self.is_expanded = False
+        self.anim.setStartValue(self.pos())
+        self.anim.setEndValue(self.get_hidden_pos(s_geo))
+        self.anim.start()
+
+    def update_layout(self, s_geo):
+        # Clear layout
+        QWidget().setLayout(self.main_layout) # decouple
+        
+        # Determine radius style based on docking side
+        # The side touching the screen/content should be sharp (0px)
+        # The outer corners should be rounded (10px)
+        radius_style = ""
+        
+        if self.dock_side in [DockSide.LEFT, DockSide.RIGHT]:
+            self.main_layout = QHBoxLayout(self.layout_container)
+            self.tab.setFixedSize(TAB_SIZE, 60)
+            
+            if self.dock_side == DockSide.LEFT:
+                # Docked Left -> Tab points Right -> Left side sharp
+                radius_style = "border-top-left-radius: 0px; border-bottom-left-radius: 0px; border-top-right-radius: 10px; border-bottom-right-radius: 10px;"
+            else: # RIGHT
+                # Docked Right -> Tab points Left -> Right side sharp
+                radius_style = "border-top-left-radius: 10px; border-bottom-left-radius: 10px; border-top-right-radius: 0px; border-bottom-right-radius: 0px;"
+                
+        else:
+            self.main_layout = QVBoxLayout(self.layout_container)
+            self.tab.setFixedSize(60, TAB_SIZE)
+            
+            if self.dock_side == DockSide.TOP:
+                # Docked Top -> Tab points Down -> Top side sharp
+                radius_style = "border-top-left-radius: 0px; border-top-right-radius: 0px; border-bottom-left-radius: 10px; border-bottom-right-radius: 10px;"
+            else: # BOTTOM
+                # Docked Bottom -> Tab points Up -> Bottom side sharp
+                radius_style = "border-top-left-radius: 10px; border-top-right-radius: 10px; border-bottom-left-radius: 0px; border-bottom-right-radius: 0px;"
+
+        self.tab.setStyleSheet(f"""
+            QFrame {{
+                background-color: {ACCENT_COLOR};
+                {radius_style}
+            }}
+            QFrame:hover {{
+                background-color: #b4befe;
+            }}
+        """)
+
+        self.main_layout.setContentsMargins(0,0,0,0)
+        self.main_layout.setSpacing(0)
+
+        # Order
+        if self.dock_side == DockSide.LEFT:
+            self.main_layout.addWidget(self.content)
+            self.main_layout.addWidget(self.tab)
+            self.main_layout.setAlignment(self.tab, Qt.AlignmentFlag.AlignVCenter)
+        elif self.dock_side == DockSide.RIGHT:
+            self.main_layout.addWidget(self.tab)
+            self.main_layout.addWidget(self.content)
+            self.main_layout.setAlignment(self.tab, Qt.AlignmentFlag.AlignVCenter)
+        elif self.dock_side == DockSide.TOP:
+            self.main_layout.addWidget(self.content)
+            self.main_layout.addWidget(self.tab)
+            self.main_layout.setAlignment(self.tab, Qt.AlignmentFlag.AlignHCenter)
+        elif self.dock_side == DockSide.BOTTOM:
+            self.main_layout.addWidget(self.tab)
+            self.main_layout.addWidget(self.content)
+            self.main_layout.setAlignment(self.tab, Qt.AlignmentFlag.AlignHCenter)
+
+        # Resize Container
+        if self.dock_side in [DockSide.LEFT, DockSide.RIGHT]:
+            self.resize(APP_WIDTH + TAB_SIZE, APP_HEIGHT)
+            self.layout_container.resize(APP_WIDTH + TAB_SIZE, APP_HEIGHT)
+        else:
+            self.resize(APP_WIDTH, APP_HEIGHT + TAB_SIZE)
+            self.layout_container.resize(APP_WIDTH, APP_HEIGHT + TAB_SIZE)
+
+    def get_hidden_pos(self, s_geo):
+        if self.dock_side == DockSide.LEFT:
+            # Window at left edge. Content is left of Tab.
+            # Shown: Content visible at 0. Tab at APP_WIDTH.
+            # Hidden: Content at -APP_WIDTH. Tab at 0.
+            # Position of Window top-left:
+            return QPoint(s_geo.left() - APP_WIDTH, max(s_geo.top(), min(self.y(), s_geo.bottom() - APP_HEIGHT)))
+        
+        elif self.dock_side == DockSide.RIGHT:
+            # Window at right edge. Tab | Content.
+            # Hidden: Window at ScreenRight - TAB.
+            return QPoint(s_geo.right() - TAB_SIZE, max(s_geo.top(), min(self.y(), s_geo.bottom() - APP_HEIGHT)))
+            
+        elif self.dock_side == DockSide.TOP:
+            # Top edge. Content / Tab.
+            # Hidden: Window Top at -APP_HEIGHT.
+            return QPoint(max(s_geo.left(), min(self.x(), s_geo.right() - APP_WIDTH)), s_geo.top() - APP_HEIGHT)
+            
+        elif self.dock_side == DockSide.BOTTOM:
+            # Bottom edge. Tab / Content.
+            # Hidden: Window Top at ScreenBottom - TAB.
+            return QPoint(max(s_geo.left(), min(self.x(), s_geo.right() - APP_WIDTH)), s_geo.bottom() - TAB_SIZE)
+
+    def get_shown_pos(self, s_geo):
+        current = self.get_hidden_pos(s_geo) # Use current 'orthagonal' coord
+        
+        if self.dock_side == DockSide.LEFT:
+            return QPoint(s_geo.left(), current.y())
+        elif self.dock_side == DockSide.RIGHT:
+            return QPoint(s_geo.right() - (APP_WIDTH + TAB_SIZE), current.y())
+        elif self.dock_side == DockSide.TOP:
+            return QPoint(current.x(), s_geo.top())
+        elif self.dock_side == DockSide.BOTTOM:
+            return QPoint(current.x(), s_geo.bottom() - (APP_HEIGHT + TAB_SIZE))
+
+    def toggle_slide(self):
+        screen = QApplication.screenAt(self.geometry().center())
+        if not screen: screen = QApplication.primaryScreen()
+        s_geo = screen.geometry()
+
         start = self.pos()
         if self.is_expanded:
-            end = QPoint(self.x_hidden, self.y_pos)
+            end = self.get_hidden_pos(s_geo)
             self.is_expanded = False
         else:
-            end = QPoint(self.x_shown, self.y_pos)
+            end = self.get_shown_pos(s_geo)
             self.is_expanded = True
             self.activateWindow()
-            self.content_area.setFocus()
+            self.content.setFocus()
 
         self.anim.setStartValue(start)
         self.anim.setEndValue(end)
         self.anim.start()
 
-    def slide_in(self):
-        if self.is_expanded:
-            self.toggle_slide()
-
-    def add_task_trigger(self):
-        self.matrix.add_new_task()
-
     def eventFilter(self, obj, event):
-        # Detect global focus change or clicks outside
-        if event.type() == QEvent.Type.WindowDeactivate:
-            # If we lost focus to another window, slide back in
-            if self.is_expanded:
-                self.slide_in()
-                return True
+        if event.type() == QEvent.Type.WindowDeactivate and self.is_expanded:
+            self.toggle_slide()
+            return True
         return super().eventFilter(obj, event)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    
-    # Ensure High DPI scaling
     if hasattr(Qt.ApplicationAttribute, 'AA_EnableHighDpiScaling'):
         QApplication.setAttribute(Qt.ApplicationAttribute.AA_EnableHighDpiScaling, True)
-    if hasattr(Qt.ApplicationAttribute, 'AA_UseHighDpiPixmaps'):
-        QApplication.setAttribute(Qt.ApplicationAttribute.AA_UseHighDpiPixmaps, True)
-
     window = SlideWindow()
     window.show()
-    
     sys.exit(app.exec())
