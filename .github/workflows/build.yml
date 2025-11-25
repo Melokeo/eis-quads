@@ -58,7 +58,7 @@ jobs:
           --clean `
           --noconfirm `
           --noupx `
-          --icon=eisquads.ico `
+          --icon "eisquads.ico" `
           --version-file src/version_info.txt `
           --hidden-import pkgutil `
           --exclude-module PyQt6.QtQml `
