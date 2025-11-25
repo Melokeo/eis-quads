@@ -10,6 +10,8 @@ class TaskDot(QWidget):
     link_started = pyqtSignal(object)
     link_dragging = pyqtSignal(QPoint)
     link_ended = pyqtSignal(QPoint)
+    drag_started = pyqtSignal(str) # emits task id
+    drag_ended = pyqtSignal()
 
     def __init__(self, task: Task, parent=None):
         super().__init__(parent)
@@ -247,6 +249,8 @@ class TaskDot(QWidget):
 
     def mouseDoubleClickEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
+            if self.parent():
+                self.parent().push_undo('complete')
             self.task.completed = not self.task.completed
             self.update()
             self.moved.emit()
@@ -261,6 +265,7 @@ class TaskDot(QWidget):
         elif event.button() == Qt.MouseButton.LeftButton:
             self.dragging = True
             self.drag_start_global = event.globalPosition().toPoint()
+            self.drag_started.emit(self.task.id)
             
             if self.parent():
                 p_w, p_h = self.parent().width(), self.parent().height()
@@ -349,6 +354,7 @@ class TaskDot(QWidget):
 
         if self.dragging:
             self.dragging = False
+            self.drag_ended.emit()
             
             if self.parent():
                 p_w, p_h = self.parent().width(), self.parent().height()

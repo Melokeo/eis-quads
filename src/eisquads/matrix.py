@@ -16,6 +16,8 @@ class MatrixCanvas(QFrame):
         self.locked = False
         self.temp_link_start = None
         self.temp_link_end = None
+        self.undo_stack = []
+        self.redo_stack = []
         self.overlay = DependencyOverlay(self)
         self.init_ui()
 
@@ -63,11 +65,78 @@ class MatrixCanvas(QFrame):
         dot.link_started.connect(self.on_link_started)
         dot.link_dragging.connect(self.on_link_dragging)
         dot.link_ended.connect(self.on_link_ended)
+        dot.drag_started.connect(self.on_dot_drag_start)
         # dot.clicked.connect(self.show_details) # detail page hidden for now
         self.dots.append(dot)
         dot.update_position()
         dot.show()
         self.overlay.raise_()
+
+    def get_state(self):
+        # Deep copy of tasks state
+        return [
+            Task(t.id, t.title, t.desc, t.x, t.y, t.completed, list(t.dependencies))
+            for t in self.tasks
+        ]
+
+    def restore_state(self, state):
+        # Restore tasks from state
+        self.tasks = [
+            Task(t.id, t.title, t.desc, t.x, t.y, t.completed, list(t.dependencies))
+            for t in state
+        ]
+        self.refresh_dots()
+        self.overlay.update()
+        self.save_data()
+
+    def push_undo(self, action_type, target_id=None):
+        current_state = self.get_state()
+        self.undo_stack.append({
+            'state': current_state,
+            'action': action_type,
+            'target_id': target_id
+        })
+        
+        # Cap the stack size to prevent memory bloat
+        if len(self.undo_stack) > 50:
+            self.undo_stack.pop(0)
+            
+        self.redo_stack.clear()
+
+    def undo(self):
+        if not self.undo_stack:
+            return
+            
+        # Save current state to redo stack
+        current_state = self.get_state()
+        last_action = self.undo_stack.pop()
+        
+        self.redo_stack.append({
+            'state': current_state,
+            'action': last_action['action'],
+            'target_id': last_action['target_id']
+        })
+        
+        self.restore_state(last_action['state'])
+
+    def redo(self):
+        if not self.redo_stack:
+            return
+            
+        # Save current state to undo stack
+        current_state = self.get_state()
+        next_action = self.redo_stack.pop()
+        
+        self.undo_stack.append({
+            'state': current_state,
+            'action': next_action['action'],
+            'target_id': next_action['target_id']
+        })
+        
+        self.restore_state(next_action['state'])
+
+    def on_dot_drag_start(self, task_id):
+        self.push_undo('move', task_id)
 
     def on_link_started(self, dot):
         self.temp_link_start = dot
@@ -87,6 +156,7 @@ class MatrixCanvas(QFrame):
             target = target.parent()
             
         if target and isinstance(target, TaskDot) and target != self.temp_link_start:
+            self.push_undo('link')
             # toggle dependency
             start_id = self.temp_link_start.task.id
             target_id = target.task.id
@@ -105,7 +175,7 @@ class MatrixCanvas(QFrame):
         self.overlay.update()
 
     def on_dot_moved(self):
-        # Update all dots to resolve overlaps dynamically
+        # update all dots to resolve overlaps dynamically
         for dot in self.dots:
             dot.update_position()
         self.overlay.update() # repaint lines
@@ -122,6 +192,7 @@ class MatrixCanvas(QFrame):
             dialog.move(global_pos.x() - 100, global_pos.y() - 20)
             
         if dialog.exec() == QDialog.DialogCode.Accepted and dialog.input.text().strip():
+            self.push_undo('add')
             name = dialog.input.text().strip()
             new_task = Task(str(uuid.uuid4()), name, "", x, y)
             self.tasks.append(new_task)

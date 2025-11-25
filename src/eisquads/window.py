@@ -219,6 +219,18 @@ class SlideWindow(QWidget):
             self.content.reload_tasks()
             return
 
+        # Undo/Redo shortcuts
+        if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            if event.key() == Qt.Key.Key_Y:
+                self.content.redo()
+                return
+            elif event.key() == Qt.Key.Key_Z:
+                if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+                    self.content.redo()
+                else:
+                    self.content.undo()
+                return
+
         text = event.text()
         if text:
             self.key_buffer += text
@@ -239,6 +251,12 @@ class SlideWindow(QWidget):
                 self.key_buffer = ""
             elif self.key_buffer.endswith("reload"):
                 self.content.reload_tasks()
+                self.key_buffer = ""
+            elif self.key_buffer.endswith("undo"):
+                self.content.undo()
+                self.key_buffer = ""
+            elif self.key_buffer.endswith("redo"):
+                self.content.redo()
                 self.key_buffer = ""
             elif self.key_buffer.endswith("nosave"):
                 self.should_save = False
