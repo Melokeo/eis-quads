@@ -14,13 +14,14 @@ class MatrixCanvas(QFrame):
         self.dots = []
         self.init_ui()
 
-        # minimal Add Button embedded in canvas
+        # minimal add button
         self.add_btn = QPushButton("+", self)
         self.add_btn.setObjectName("addBtn")
         self.add_btn.setFixedSize(30, 30)
         self.add_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.add_btn.clicked.connect(self.add_new_task)
-        # position will be set in resizeEvent
+        self.add_btn.hide()
+        # position set in resizeEvent
 
     def init_ui(self):
         self.tasks = TaskManager.load_tasks()
@@ -46,14 +47,14 @@ class MatrixCanvas(QFrame):
         self.dots = []
         for task in self.tasks: self.add_dot_widget(task)
         
-        # Final pass to resolve overlaps after all dots are added
+        # final pass to resolve overlaps after all dots added
         for dot in self.dots:
             dot.update_position()
 
     def add_dot_widget(self, task):
         dot = TaskDot(task, self)
         dot.moved.connect(self.on_dot_moved)
-        dot.clicked.connect(self.show_details)
+        # dot.clicked.connect(self.show_details) # detail page hidden for now
         self.dots.append(dot)
         dot.update_position()
         dot.show()
@@ -65,7 +66,7 @@ class MatrixCanvas(QFrame):
         self.save_data()
 
     def add_new_task(self, x=0.5, y=0.5):
-        # show minimal input dialog
+        # show input dialog
         dialog = NameInput(self)
         # center dialog on cursor or center of widget
         if self.rect().contains(self.mapFromGlobal(QCursor.pos())):

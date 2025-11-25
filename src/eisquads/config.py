@@ -1,12 +1,12 @@
 from enum import Enum
 from dataclasses import dataclass
 
-# --- Configuration & Styling ---
+# --- configuration & styling ---
 @dataclass
 class UiConfig:
     APP_WIDTH = 360
     APP_HEIGHT = 250
-    TAB_SIZE = 24  # Width or Height depending on orientation
+    TAB_SIZE = 24  # width or height depending on orientation
     BG_COLOR = "#1e1e2e"
     QUAD_LINES_COLOR = "#5C5E7E"
     TEXT_COLOR = "#cdd6f4"

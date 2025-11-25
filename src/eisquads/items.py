@@ -17,7 +17,7 @@ class TaskDot(QWidget):
         self.dot_local_pos = QPoint(0, 0)
         self.text_rect = QRect()
         self.text_align = Qt.AlignmentFlag.AlignLeft
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        # self.setCursor(Qt.CursorShape.PointingHandCursor) 
         self.update_position()
         self.show()
 
@@ -27,12 +27,12 @@ class TaskDot(QWidget):
         p_w = self.parent().width()
         p_h = self.parent().height()
         
-        # Dot position (top-left of the dot itself)
+        # dot position (top-left of the dot itself)
         dot_x = int(self.task.x * p_w)
         dot_y = int(self.task.y * p_h)
         
         ds = UiConfig.DOT_SIZE
-        # Clamp dot to screen
+        # clamp dot to screen, lest it escapes into the void
         dot_x = max(0, min(dot_x, p_w - ds))
         dot_y = max(0, min(dot_y, p_h - ds))
         
@@ -48,23 +48,41 @@ class TaskDot(QWidget):
         siblings = [c for c in self.parent().children() if isinstance(c, TaskDot) and c is not self and c.isVisible()]
         
         candidates = []
-        for p_type in ['right', 'left', 'top', 'bottom']:
+        # generate candidates including aligned vertical ones
+        for p_type in ['right', 'left', 'top-center', 'top-left', 'top-right', 'bottom-center', 'bottom-left', 'bottom-right']:
             candidates.append(self._create_candidate(p_type, dot_x, dot_y, text_w, text_h, ds))
 
         best = None
         min_score = float('inf')
         
+        cx = p_w // 2
+        cy = p_h // 2
+        
+        # determine dot quadrant (based on center)
+        dot_cx = dot_x + ds // 2
+        dot_cy = dot_y + ds // 2
+        is_left = dot_cx < cx
+        is_top = dot_cy < cy
+        
+        # define quadrant boundaries
+        q_left = 0 if is_left else cx
+        q_right = cx if is_left else p_w
+        q_top = 0 if is_top else cy
+        q_bottom = cy if is_top else p_h
+        
+        quadrant_rect = QRect(q_left, q_top, q_right - q_left, q_bottom - q_top)
+        
         for cand in candidates:
             score = 0
             g = cand['geo']
             
-            # 1. Screen bounds penalty
+            # 1. screen bounds penalty
             if g.left() < 0: score += abs(g.left()) * 10
             if g.top() < 0: score += abs(g.top()) * 10
             if g.right() > p_w: score += (g.right() - p_w) * 10
             if g.bottom() > p_h: score += (g.bottom() - p_h) * 10
             
-            # 2. Overlap penalty
+            # 2. overlap penalty
             margin = 10  # stricter spacing
             g_inflated = g.adjusted(-margin, -margin, margin, margin)
             for sib in siblings:
@@ -73,9 +91,18 @@ class TaskDot(QWidget):
                     area = intersect.width() * intersect.height()
                     score += area * 5.0
             
-            # 3. Preference penalty
-            if cand['type'] in ['top', 'bottom']:
+            # 3. preference penalty
+            # we prefer side labels, top/bottom are a last resort
+            if 'top' in cand['type'] or 'bottom' in cand['type']:
                 score += 50
+                # prefer centered if vertical
+                if 'center' not in cand['type']:
+                    score += 5
+            
+            # 4. axis crossing penalty (strict quadrant enforcement)
+            # check if candidate is fully contained within the quadrant
+            if not quadrant_rect.contains(g):
+                score += 10000 # massive penalty, do not cross the streams
                 
             if score < min_score:
                 min_score = score
@@ -90,8 +117,8 @@ class TaskDot(QWidget):
 
     def _create_candidate(self, p_type, dx, dy, tw, th, ds):
         pad = 5
-        if p_type in ['top', 'bottom']:
-            pad = 1  # Reduced padding for vertical layout
+        if 'top' in p_type or 'bottom' in p_type:
+            pad = 1
 
         if p_type == 'right':
             total_h = max(ds, th)
@@ -113,25 +140,47 @@ class TaskDot(QWidget):
             text_rect = QRect(0, 0, tw, total_h)
             align = Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter | Qt.TextFlag.TextWordWrap
             
-        elif p_type == 'top':
+        elif 'top' in p_type:
             total_w = max(ds, tw)
             w = total_w
             h = th + pad + ds
-            x = dx - (total_w - ds)//2
             y = dy - th - pad
-            dot_local = QPoint((total_w - ds)//2, th + pad)
-            text_rect = QRect(0, 0, total_w, th)
-            align = Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignBottom | Qt.TextFlag.TextWordWrap
             
-        elif p_type == 'bottom':
+            if 'left' in p_type: # aligned left (expands right)
+                x = dx
+                dot_local = QPoint(0, th + pad)
+                align = Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignBottom | Qt.TextFlag.TextWordWrap
+            elif 'right' in p_type: # aligned right (expands left)
+                x = dx + ds - total_w
+                dot_local = QPoint(total_w - ds, th + pad)
+                align = Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignBottom | Qt.TextFlag.TextWordWrap
+            else: # center
+                x = dx - (total_w - ds)//2
+                dot_local = QPoint((total_w - ds)//2, th + pad)
+                align = Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignBottom | Qt.TextFlag.TextWordWrap
+                
+            text_rect = QRect(0, 0, total_w, th)
+            
+        elif 'bottom' in p_type:
             total_w = max(ds, tw)
             w = total_w
             h = ds + pad + th
-            x = dx - (total_w - ds)//2
             y = dy
-            dot_local = QPoint((total_w - ds)//2, 0)
+            
+            if 'left' in p_type: # aligned left (expands right)
+                x = dx
+                dot_local = QPoint(0, 0)
+                align = Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop | Qt.TextFlag.TextWordWrap
+            elif 'right' in p_type: # aligned right (expands left)
+                x = dx + ds - total_w
+                dot_local = QPoint(total_w - ds, 0)
+                align = Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop | Qt.TextFlag.TextWordWrap
+            else: # center
+                x = dx - (total_w - ds)//2
+                dot_local = QPoint((total_w - ds)//2, 0)
+                align = Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop | Qt.TextFlag.TextWordWrap
+                
             text_rect = QRect(0, ds + pad, total_w, th)
-            align = Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop | Qt.TextFlag.TextWordWrap
             
         return {
             'type': p_type,
@@ -142,9 +191,10 @@ class TaskDot(QWidget):
         }
 
     def get_color(self):
-        # determine quadrant based on current normalized position
-        # x axis: left (low urg) / right (high urg)
-        # y axis: top (high imp) / bottom (low imp)
+        if self.task.completed:
+            return "#45475a" # completed tasks fade into obscurity
+
+        # determine quadrant
         
         x = self.task.x
         y = self.task.y
@@ -173,12 +223,21 @@ class TaskDot(QWidget):
         # draw label
         painter.setPen(QColor(UiConfig.TEXT_COLOR))
         font = QFont(UiConfig.DOT_FONT, UiConfig.DOT_FONT_SIZE)
+        if self.task.completed:
+            font.setStrikeOut(True)
+            painter.setPen(QColor("#6c7086")) # dim text for completed
         painter.setFont(font)
         label = self.task.title
         
         painter.drawText(self.text_rect, 
                          self.text_align, 
                          label)
+
+    def mouseDoubleClickEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.task.completed = not self.task.completed
+            self.update()
+            self.moved.emit()
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
@@ -236,7 +295,7 @@ class TaskDot(QWidget):
                 dist_sq = dx*dx + dy*dy
                 
                 if dist_sq < min_dist*min_dist:
-                    # Overlap detected
+                    # overlap detected
                     dist = (dist_sq)**0.5
                     if dist == 0:
                         dx = 1
@@ -251,7 +310,7 @@ class TaskDot(QWidget):
                     y += push_y
                     moved = True
             
-            # Clamp to screen
+            # clamp to screen
             x = max(0, min(x, p_w - ds))
             y = max(0, min(y, p_h - ds))
             
@@ -268,14 +327,14 @@ class TaskDot(QWidget):
                 p_w, p_h = self.parent().width(), self.parent().height()
                 axis_x, axis_y = p_w // 2, p_h // 2
                 
-                # Use dot position from task, not widget position
+                # use dot position from task
                 curr_x = int(self.task.x * p_w)
                 curr_y = int(self.task.y * p_h)
                 
                 new_x = self._resolve_overlap(curr_x, axis_x, UiConfig.DOT_SIZE)
                 new_y = self._resolve_overlap(curr_y, axis_y, UiConfig.DOT_SIZE)
                 
-                # Resolve dot overlap
+                # resolve dot overlap
                 new_x, new_y = self._resolve_dot_overlap(new_x, new_y, p_w, p_h)
                 
                 if new_x != curr_x or new_y != curr_y:

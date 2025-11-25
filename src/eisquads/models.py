@@ -9,6 +9,7 @@ class Task:
     desc: str
     x: float
     y: float
+    completed: bool = False
     
     def to_dict(self):
         return asdict(self)
@@ -23,7 +24,9 @@ class TaskManager:
         try:
             with open(TaskManager.FILE_NAME, 'r') as f:
                 data = json.load(f)
-                return [Task(**t) for t in data]
+                # filter out completed tasks, they are history
+                all_tasks = [Task(**t) for t in data]
+                return [t for t in all_tasks if not t.completed]
         except:
             return []
 
