@@ -3,6 +3,8 @@ A windows desktop tool with hovering four-quadrant task management panel (Eisenh
 
 It is aimed for a **simple** desktop widget rather than a complicated task managing system.
 
+![usage example](https://github.com/user-attachments/assets/194cf266-6cda-4507-87a4-69dbf6eb754b)
+
 ## Usage
 After running, it shows up as a docking tab. Drag it anywhere. Press Esc or right click on the tab to quit.
 
