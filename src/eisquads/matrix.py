@@ -16,6 +16,7 @@ class MatrixCanvas(QFrame):
         self.locked = False
         self.temp_link_start = None
         self.temp_link_end = None
+        self.overlay = DependencyOverlay(self)
         self.init_ui()
 
         # minimal add button
@@ -34,6 +35,7 @@ class MatrixCanvas(QFrame):
     def resizeEvent(self, event):
         # place add button in top right corner
         self.add_btn.move(self.width() - 40, 10)
+        self.overlay.resize(self.size())
         # reposition dots based on new size
         for dot in self.dots:
             dot.update_position()
@@ -65,15 +67,16 @@ class MatrixCanvas(QFrame):
         self.dots.append(dot)
         dot.update_position()
         dot.show()
+        self.overlay.raise_()
 
     def on_link_started(self, dot):
         self.temp_link_start = dot
-        self.temp_link_end = dot.geometry().center()
-        self.update()
+        self.temp_link_end = dot.get_dot_center()
+        self.overlay.update()
 
     def on_link_dragging(self, global_pos):
         self.temp_link_end = self.mapFromGlobal(global_pos)
-        self.update()
+        self.overlay.update()
 
     def on_link_ended(self, global_pos):
         end_pos = self.mapFromGlobal(global_pos)
@@ -99,13 +102,13 @@ class MatrixCanvas(QFrame):
             
         self.temp_link_start = None
         self.temp_link_end = None
-        self.update()
+        self.overlay.update()
 
     def on_dot_moved(self):
         # Update all dots to resolve overlaps dynamically
         for dot in self.dots:
             dot.update_position()
-        self.update() # repaint lines
+        self.overlay.update() # repaint lines
         self.save_data()
 
     def add_new_task(self, x=0.5, y=0.5):
@@ -179,9 +182,6 @@ class MatrixCanvas(QFrame):
         painter.drawText(w - 30, cy - 5, "Urg")
         painter.drawText(cx + 5, 15, "Imp")
 
-        # draw dependencies
-        self.draw_dependencies(painter)
-
     def draw_dependencies(self, painter):
         # map id to dot center
         dot_map = {d.task.id: d for d in self.dots}
@@ -194,19 +194,21 @@ class MatrixCanvas(QFrame):
 
         # draw existing links
         for dot in self.dots:
-            start_center = dot.geometry().center()
+            start_center = dot.get_dot_center()
             for dep_id in dot.task.dependencies:
                 if dep_id in dot_map:
                     end_dot = dot_map[dep_id]
-                    end_center = end_dot.geometry().center()
+                    end_center = end_dot.get_dot_center()
                     self.draw_curved_arrow(painter, end_center, start_center)
 
         # draw temp link
         if self.temp_link_start and self.temp_link_end:
-            start = self.temp_link_start.geometry().center()
+            start = self.temp_link_start.get_dot_center()
             self.draw_curved_arrow(painter, start, self.temp_link_end)
 
     def draw_curved_arrow(self, painter, start, end):
+        start = QPointF(start)
+        end = QPointF(end)
         path = QPainterPath()
         path.moveTo(start)
         
@@ -256,3 +258,15 @@ class MatrixCanvas(QFrame):
 
     def set_locked(self, locked: bool):
         self.locked = locked
+
+class DependencyOverlay(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        if self.parent():
+            self.parent().draw_dependencies(painter)

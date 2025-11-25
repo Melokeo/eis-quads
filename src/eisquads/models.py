@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 from pathlib import Path
 from dataclasses import dataclass, asdict, field
 from config import get_storage_dir
@@ -41,3 +42,17 @@ class TaskManager:
         file_path = TaskManager.get_storage_path()
         with open(file_path, 'w') as f:
             json.dump([t.to_dict() for t in tasks], f)
+
+    @staticmethod
+    def create_backup():
+        path = TaskManager.get_storage_path()
+        if path.exists():
+            backup_path = path.with_suffix(".bak")
+            shutil.copy2(path, backup_path)
+
+    @staticmethod
+    def restore_backup():
+        path = TaskManager.get_storage_path()
+        backup_path = path.with_suffix(".bak")
+        if backup_path.exists():
+            shutil.copy2(backup_path, path)

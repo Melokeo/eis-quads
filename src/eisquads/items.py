@@ -255,19 +255,18 @@ class TaskDot(QWidget):
         if self.parent() and getattr(self.parent(), 'locked', False):
             return
 
-        if event.button() == Qt.MouseButton.LeftButton:
-            if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
-                self.linking = True
-                self.link_started.emit(self)
-            else:
-                self.dragging = True
-                self.drag_start_global = event.globalPosition().toPoint()
-                
-                if self.parent():
-                    p_w, p_h = self.parent().width(), self.parent().height()
-                    self.drag_start_dot_pos = QPoint(int(self.task.x * p_w), int(self.task.y * p_h))
-                
-                self.raise_()
+        if event.button() == Qt.MouseButton.MiddleButton:
+            self.linking = True
+            self.link_started.emit(self)
+        elif event.button() == Qt.MouseButton.LeftButton:
+            self.dragging = True
+            self.drag_start_global = event.globalPosition().toPoint()
+            
+            if self.parent():
+                p_w, p_h = self.parent().width(), self.parent().height()
+                self.drag_start_dot_pos = QPoint(int(self.task.x * p_w), int(self.task.y * p_h))
+            
+            self.raise_()
 
     def mouseMoveEvent(self, event):
         if self.linking:
@@ -374,3 +373,8 @@ class TaskDot(QWidget):
             
         elif event.button() == Qt.MouseButton.LeftButton:
             self.clicked.emit(self)
+
+    def get_dot_center(self):
+        ds = UiConfig.DOT_SIZE
+        center_local = self.dot_local_pos + QPoint(ds // 2, ds // 2)
+        return self.pos() + center_local

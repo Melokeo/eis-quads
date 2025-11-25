@@ -6,6 +6,7 @@ from PyQt6.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QApplication
 from config import UiConfig, STYLESHEET, DockSide, get_storage_dir
 from tab import DraggableTab
 from matrix import MatrixCanvas
+from models import TaskManager
 
 class SlideWindow(QWidget):
     def __init__(self):
@@ -14,6 +15,7 @@ class SlideWindow(QWidget):
         self.is_expanded = False
         self.drag_offset = QPoint() 
         self.key_buffer = ""
+        self.should_save = True
 
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | 
                             Qt.WindowType.WindowStaysOnTopHint | 
@@ -45,6 +47,7 @@ class SlideWindow(QWidget):
         
         self.load_state()
         self.snap_to_screen_edge()
+        TaskManager.create_backup()
 
     def handle_drag_start(self, global_pos):
         # calculate where the mouse is relative to the window top-left
@@ -237,12 +240,17 @@ class SlideWindow(QWidget):
             elif self.key_buffer.endswith("reload"):
                 self.content.reload_tasks()
                 self.key_buffer = ""
+            elif self.key_buffer.endswith("nosave"):
+                self.should_save = False
+                TaskManager.restore_backup()
+                QApplication.instance().quit()
 
     def closeEvent(self, event):
         # save current position before closing
-        try:
-            with open(self.get_state_path(), "w") as f:
-                json.dump({"x": self.x(), "y": self.y()}, f)
-        except Exception:
-            pass
+        if self.should_save:
+            try:
+                with open(self.get_state_path(), "w") as f:
+                    json.dump({"x": self.x(), "y": self.y()}, f)
+            except Exception:
+                pass
         super().closeEvent(event)
