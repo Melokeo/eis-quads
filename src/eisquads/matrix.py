@@ -1,11 +1,12 @@
 import uuid
-from PyQt6.QtCore import Qt, QPoint
-from PyQt6.QtGui import QColor, QPainter, QPen, QFont, QCursor
+from PyQt6.QtCore import Qt, QPoint, QPointF
+from PyQt6.QtGui import QColor, QPainter, QPen, QFont, QCursor, QPainterPath
 from PyQt6.QtWidgets import QWidget, QPushButton, QDialog, QFrame
 from config import UiConfig
 from models import Task, TaskManager
 from items import TaskDot
 from dialogs import NameInput, DetailPopup
+import math
 
 class MatrixCanvas(QFrame):
     def __init__(self, parent=None):
@@ -13,6 +14,8 @@ class MatrixCanvas(QFrame):
         self.tasks = []
         self.dots = []
         self.locked = False
+        self.temp_link_start = None
+        self.temp_link_end = None
         self.init_ui()
 
         # minimal add button
@@ -55,15 +58,54 @@ class MatrixCanvas(QFrame):
     def add_dot_widget(self, task):
         dot = TaskDot(task, self)
         dot.moved.connect(self.on_dot_moved)
+        dot.link_started.connect(self.on_link_started)
+        dot.link_dragging.connect(self.on_link_dragging)
+        dot.link_ended.connect(self.on_link_ended)
         # dot.clicked.connect(self.show_details) # detail page hidden for now
         self.dots.append(dot)
         dot.update_position()
         dot.show()
 
+    def on_link_started(self, dot):
+        self.temp_link_start = dot
+        self.temp_link_end = dot.geometry().center()
+        self.update()
+
+    def on_link_dragging(self, global_pos):
+        self.temp_link_end = self.mapFromGlobal(global_pos)
+        self.update()
+
+    def on_link_ended(self, global_pos):
+        end_pos = self.mapFromGlobal(global_pos)
+        target = self.childAt(end_pos)
+        
+        # childAt might return the label or other parts, walk up to find TaskDot
+        while target and not isinstance(target, TaskDot):
+            target = target.parent()
+            
+        if target and isinstance(target, TaskDot) and target != self.temp_link_start:
+            # toggle dependency
+            start_id = self.temp_link_start.task.id
+            target_id = target.task.id
+            
+            if start_id in target.task.dependencies:
+                target.task.dependencies.remove(start_id)
+            else:
+                # prevent cycles? nah, let chaos reign (or maybe just simple check)
+                if target_id not in self.temp_link_start.task.dependencies:
+                    target.task.dependencies.append(start_id)
+            
+            self.save_data()
+            
+        self.temp_link_start = None
+        self.temp_link_end = None
+        self.update()
+
     def on_dot_moved(self):
         # Update all dots to resolve overlaps dynamically
         for dot in self.dots:
             dot.update_position()
+        self.update() # repaint lines
         self.save_data()
 
     def add_new_task(self, x=0.5, y=0.5):
@@ -136,6 +178,81 @@ class MatrixCanvas(QFrame):
         # minimal labels
         painter.drawText(w - 30, cy - 5, "Urg")
         painter.drawText(cx + 5, 15, "Imp")
+
+        # draw dependencies
+        self.draw_dependencies(painter)
+
+    def draw_dependencies(self, painter):
+        # map id to dot center
+        dot_map = {d.task.id: d for d in self.dots}
+        
+        pen = QPen(QColor(UiConfig.ACCENT_COLOR))
+        pen.setWidth(2)
+        pen.setStyle(Qt.PenStyle.DashLine)
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+
+        # draw existing links
+        for dot in self.dots:
+            start_center = dot.geometry().center()
+            for dep_id in dot.task.dependencies:
+                if dep_id in dot_map:
+                    end_dot = dot_map[dep_id]
+                    end_center = end_dot.geometry().center()
+                    self.draw_curved_arrow(painter, end_center, start_center)
+
+        # draw temp link
+        if self.temp_link_start and self.temp_link_end:
+            start = self.temp_link_start.geometry().center()
+            self.draw_curved_arrow(painter, start, self.temp_link_end)
+
+    def draw_curved_arrow(self, painter, start, end):
+        path = QPainterPath()
+        path.moveTo(start)
+        
+        dx = end.x() - start.x()
+        dy = end.y() - start.y()
+        
+        # control point for curve
+        ctrl = QPointF(start.x() + dx * 0.5, start.y())
+        path.quadTo(ctrl, end)
+        
+        painter.drawPath(path)
+        
+        # arrowhead
+        # calculate angle at end
+        # derivative of quad bezier at t=1 is 2(P2 - P1) where P1 is ctrl, P2 is end
+        # actually it's 2(1-t)(P1-P0) + 2t(P2-P1). At t=1, it's 2(P2-P1)
+        
+        arrow_dx = end.x() - ctrl.x()
+        arrow_dy = end.y() - ctrl.y()
+        angle = math.atan2(arrow_dy, arrow_dx)
+        
+        arrow_len = 10
+        arrow_angle = math.pi / 6
+        
+        p1 = QPointF(end.x() - arrow_len * math.cos(angle - arrow_angle),
+                     end.y() - arrow_len * math.sin(angle - arrow_angle))
+        p2 = QPointF(end.x() - arrow_len * math.cos(angle + arrow_angle),
+                     end.y() - arrow_len * math.sin(angle + arrow_angle))
+        
+        painter.setBrush(QColor(UiConfig.ACCENT_COLOR))
+        painter.setPen(Qt.PenStyle.NoPen)
+        
+        arrow_path = QPainterPath()
+        arrow_path.moveTo(end)
+        arrow_path.lineTo(p1)
+        arrow_path.lineTo(p2)
+        arrow_path.closeSubpath()
+        
+        painter.drawPath(arrow_path)
+        
+        # restore pen
+        pen = QPen(QColor(UiConfig.ACCENT_COLOR))
+        pen.setWidth(2)
+        pen.setStyle(Qt.PenStyle.DashLine)
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
 
     def set_locked(self, locked: bool):
         self.locked = locked

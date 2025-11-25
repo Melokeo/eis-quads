@@ -1,7 +1,7 @@
 import json
 import os
 from pathlib import Path
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from config import get_storage_dir
 
 @dataclass
@@ -12,6 +12,7 @@ class Task:
     x: float
     y: float
     completed: bool = False
+    dependencies: list[str] = field(default_factory=list)
     
     def to_dict(self):
         return asdict(self)

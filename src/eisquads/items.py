@@ -7,11 +7,15 @@ from models import Task
 class TaskDot(QWidget):
     moved = pyqtSignal()
     clicked = pyqtSignal(object)
+    link_started = pyqtSignal(object)
+    link_dragging = pyqtSignal(QPoint)
+    link_ended = pyqtSignal(QPoint)
 
     def __init__(self, task: Task, parent=None):
         super().__init__(parent)
         self.task = task
         self.dragging = False
+        self.linking = False
         self.drag_start_global = QPoint()
         self.drag_start_dot_pos = QPoint()
         self.dot_local_pos = QPoint(0, 0)
@@ -252,16 +256,24 @@ class TaskDot(QWidget):
             return
 
         if event.button() == Qt.MouseButton.LeftButton:
-            self.dragging = True
-            self.drag_start_global = event.globalPosition().toPoint()
-            
-            if self.parent():
-                p_w, p_h = self.parent().width(), self.parent().height()
-                self.drag_start_dot_pos = QPoint(int(self.task.x * p_w), int(self.task.y * p_h))
-            
-            self.raise_()
+            if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+                self.linking = True
+                self.link_started.emit(self)
+            else:
+                self.dragging = True
+                self.drag_start_global = event.globalPosition().toPoint()
+                
+                if self.parent():
+                    p_w, p_h = self.parent().width(), self.parent().height()
+                    self.drag_start_dot_pos = QPoint(int(self.task.x * p_w), int(self.task.y * p_h))
+                
+                self.raise_()
 
     def mouseMoveEvent(self, event):
+        if self.linking:
+            self.link_dragging.emit(event.globalPosition().toPoint())
+            return
+
         if self.dragging and self.parent():
             curr_global = event.globalPosition().toPoint()
             delta = curr_global - self.drag_start_global
@@ -331,6 +343,11 @@ class TaskDot(QWidget):
         return int(x), int(y)
 
     def mouseReleaseEvent(self, event):
+        if self.linking:
+            self.linking = False
+            self.link_ended.emit(event.globalPosition().toPoint())
+            return
+
         if self.dragging:
             self.dragging = False
             
