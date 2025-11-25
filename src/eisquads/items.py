@@ -17,6 +17,7 @@ class TaskDot(QWidget):
         self.dot_local_pos = QPoint(0, 0)
         self.text_rect = QRect()
         self.text_align = Qt.AlignmentFlag.AlignLeft
+        self.current_pos_type = 'right'
         # self.setCursor(Qt.CursorShape.PointingHandCursor) 
         self.update_position()
         self.show()
@@ -74,13 +75,14 @@ class TaskDot(QWidget):
         
         for cand in candidates:
             score = 0
+            conflict_score = 0
             g = cand['geo']
             
             # 1. screen bounds penalty
-            if g.left() < 0: score += abs(g.left()) * 10
-            if g.top() < 0: score += abs(g.top()) * 10
-            if g.right() > p_w: score += (g.right() - p_w) * 10
-            if g.bottom() > p_h: score += (g.bottom() - p_h) * 10
+            if g.left() < 0: conflict_score += abs(g.left()) * 10
+            if g.top() < 0: conflict_score += abs(g.top()) * 10
+            if g.right() > p_w: conflict_score += (g.right() - p_w) * 10
+            if g.bottom() > p_h: conflict_score += (g.bottom() - p_h) * 10
             
             # 2. overlap penalty
             margin = 10  # stricter spacing
@@ -89,8 +91,15 @@ class TaskDot(QWidget):
                 if g_inflated.intersects(sib.geometry()):
                     intersect = g_inflated.intersected(sib.geometry())
                     area = intersect.width() * intersect.height()
-                    score += area * 5.0
+                    conflict_score += area * 5.0
             
+            # 4. axis crossing penalty (strict quadrant enforcement)
+            # check if candidate is fully contained within the quadrant
+            if not quadrant_rect.contains(g):
+                conflict_score += 10000 # massive penalty, do not cross the streams
+            
+            score += conflict_score
+
             # 3. preference penalty
             # we prefer side labels, top/bottom are a last resort
             if 'top' in cand['type'] or 'bottom' in cand['type']:
@@ -99,16 +108,16 @@ class TaskDot(QWidget):
                 if 'center' not in cand['type']:
                     score += 5
             
-            # 4. axis crossing penalty (strict quadrant enforcement)
-            # check if candidate is fully contained within the quadrant
-            if not quadrant_rect.contains(g):
-                score += 10000 # massive penalty, do not cross the streams
-                
+            # Hysteresis: stick to current if no conflict
+            if cand['type'] == self.current_pos_type and conflict_score == 0:
+                score -= 60
+
             if score < min_score:
                 min_score = score
                 best = cand
         
         if best:
+            self.current_pos_type = best['type']
             self.dot_local_pos = best['dot_local']
             self.text_rect = best['text_rect']
             self.text_align = best['align']

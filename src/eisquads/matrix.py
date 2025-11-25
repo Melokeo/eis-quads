@@ -103,6 +103,11 @@ class MatrixCanvas(QFrame):
                     break
         self.save_data()
 
+    def clear_all_tasks(self):
+        self.tasks = []
+        self.refresh_dots()
+        self.save_data()
+
     def paintEvent(self, event):
         super().paintEvent(event)
         painter = QPainter(self)

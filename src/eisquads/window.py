@@ -11,7 +11,8 @@ class SlideWindow(QWidget):
         super().__init__()
         self.dock_side = DockSide.RIGHT
         self.is_expanded = False
-        self.drag_offset = QPoint() # Store the offset here
+        self.drag_offset = QPoint() 
+        self.key_buffer = ""
 
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | 
                             Qt.WindowType.WindowStaysOnTopHint | 
@@ -22,9 +23,9 @@ class SlideWindow(QWidget):
         self.anim.setDuration(300)
         self.anim.setEasingCurve(QEasingCurve.Type.OutCubic)
 
-        # Components
+        # components
         self.tab = DraggableTab()
-        self.tab.drag_started.connect(self.handle_drag_start) # Connect start
+        self.tab.drag_started.connect(self.handle_drag_start) 
         self.tab.drag_moved.connect(self.handle_drag_move)
         self.tab.drag_ended.connect(self.handle_drag_end)
         self.tab.clicked.connect(self.toggle_slide)
@@ -45,11 +46,11 @@ class SlideWindow(QWidget):
         self.snap_to_screen_edge()
 
     def handle_drag_start(self, global_pos):
-        # Calculate where the mouse is relative to the window top-left
+        # calculate where the mouse is relative to the window top-left
         self.drag_offset = global_pos - self.pos()
 
     def handle_drag_move(self, global_pos):
-        # Move window to match mouse pos minus the initial offset
+        # move window to match mouse pos minus the initial offset
         self.move(global_pos - self.drag_offset)
 
     def handle_drag_end(self):
@@ -87,7 +88,7 @@ class SlideWindow(QWidget):
             self.main_layout.removeWidget(self.content)
             self.tab.setParent(self.layout_container)
             self.content.setParent(self.layout_container)
-            QWidget().setLayout(self.main_layout) # Destroy old layout
+            QWidget().setLayout(self.main_layout) # destroy old layout
         
         is_vertical = self.dock_side in [DockSide.LEFT, DockSide.RIGHT]
         
@@ -131,7 +132,7 @@ class SlideWindow(QWidget):
         
         self.content.setStyleSheet(f"background-color: {UiConfig.BG_COLOR}; border: 1px solid {UiConfig.QUAD_LINES_COLOR}; {content_radius_style}")
 
-        # Determine widget order: Content first for Left/Top, Tab first for Right/Bottom
+        # determine widget order: Content first for Left/Top, Tab first for Right/Bottom
         widgets = [self.content, self.tab] if self.dock_side in [DockSide.LEFT, DockSide.TOP] else [self.tab, self.content]
         for w in widgets:
             self.main_layout.addWidget(w)
@@ -151,7 +152,7 @@ class SlideWindow(QWidget):
             pass
 
     def get_hidden_pos(self, s_geo):
-        # Clamp current position to screen bounds for the orthogonal axis
+        # clamp current position to screen bounds for the orthogonal axis
         clamped_x = max(s_geo.left(), min(self.x(), s_geo.right() - UiConfig.APP_WIDTH))
         clamped_y = max(s_geo.top(), min(self.y(), s_geo.bottom() - UiConfig.APP_HEIGHT))
         
@@ -204,6 +205,20 @@ class SlideWindow(QWidget):
     def keyPressEvent(self, event):
         if event.key() == Qt.Key.Key_Escape:
             QApplication.instance().quit()
+            return
+
+        text = event.text()
+        if text:
+            self.key_buffer += text
+            # keep buffer manageable, we only need the tail
+            if len(self.key_buffer) > 10:
+                self.key_buffer = self.key_buffer[-10:]
+            
+            if self.key_buffer.endswith("clr"):
+                self.content.clear_all_tasks()
+                self.key_buffer = ""
+            elif self.key_buffer.endswith("exit"):
+                QApplication.instance().quit()
 
     def closeEvent(self, event):
         # save current position before closing
