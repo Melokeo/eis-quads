@@ -307,17 +307,16 @@ class MatrixCanvas(QWidget):
         painter.drawText(w - 30, cy - 5, "Urg")
         painter.drawText(cx + 5, 15, "Imp")
 
-# --- Draggable Tab ---
 class DraggableTab(QFrame):
-    drag_started = pyqtSignal(QPoint)
+    # Change signals to carry raw global position
+    drag_started = pyqtSignal(QPoint) 
     drag_moved = pyqtSignal(QPoint)
     drag_ended = pyqtSignal()
     clicked = pyqtSignal()
 
     def __init__(self):
         super().__init__()
-        self.setFixedSize(TAB_SIZE, 60) # Default vertical size
-        # Default style, will be overwritten by window layout
+        self.setFixedSize(TAB_SIZE, 60)
         self.setStyleSheet(f"""
             QFrame {{
                 background-color: {ACCENT_COLOR};
@@ -336,14 +335,15 @@ class DraggableTab(QFrame):
             self.dragging = True
             self.drag_start_pos = event.globalPosition().toPoint()
             self.setCursor(Qt.CursorShape.ClosedHandCursor)
+            # Emit raw global pos
             self.drag_started.emit(self.drag_start_pos)
         elif event.button() == Qt.MouseButton.LeftButton:
             self.clicked.emit()
 
     def mouseMoveEvent(self, event):
         if self.dragging:
-            delta = event.globalPosition().toPoint() - self.drag_start_pos
-            self.drag_moved.emit(delta)
+            # Emit raw global pos
+            self.drag_moved.emit(event.globalPosition().toPoint())
 
     def mouseReleaseEvent(self, event):
         if self.dragging:
@@ -354,13 +354,14 @@ class DraggableTab(QFrame):
             else:
                 self.drag_ended.emit()
 
-# --- Main Window ---
+# main window
 class SlideWindow(QWidget):
     def __init__(self):
         super().__init__()
         self.dock_side = DockSide.RIGHT
         self.is_expanded = False
-        
+        self.drag_offset = QPoint() # Store the offset here
+
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | 
                             Qt.WindowType.WindowStaysOnTopHint | 
                             Qt.WindowType.Tool)
@@ -372,6 +373,7 @@ class SlideWindow(QWidget):
 
         # Components
         self.tab = DraggableTab()
+        self.tab.drag_started.connect(self.handle_drag_start) # Connect start
         self.tab.drag_moved.connect(self.handle_drag_move)
         self.tab.drag_ended.connect(self.handle_drag_end)
         self.tab.clicked.connect(self.toggle_slide)
@@ -380,49 +382,34 @@ class SlideWindow(QWidget):
         self.content.setFixedSize(APP_WIDTH, APP_HEIGHT)
         self.content.setStyleSheet(f"background-color: {BG_COLOR}; border: 1px solid {QUAD_LINES_COLOR};")
 
-        # Container Layout (Dynamic)
         self.layout_container = QWidget(self)
-        self.main_layout = QHBoxLayout(self.layout_container) # Default
+        self.main_layout = QHBoxLayout(self.layout_container)
         self.main_layout.setContentsMargins(0,0,0,0)
         self.main_layout.setSpacing(0)
         
-        # Initial Setup
         self.setStyleSheet(STYLESHEET)
         QApplication.instance().installEventFilter(self)
         
-        # Snap to default
         self.snap_to_screen_edge()
 
-    def handle_drag_move(self, delta):
-        # Move window based on delta, but we must use global position during drag
-        # Since drag originates from tab, we need absolute tracking
-        # Simplified: When dragging tab, we move the whole window
-        # But `delta` here is diff from start.
-        # Let's just track the mouse globally in the Tab class, but here we can just
-        # update position relative to current pos.
-        # Actually `delta` in DraggableTab is calculated as `current - start`.
-        # This is strictly relative to the start of the drag.
-        pass 
-        # Note: In a robust implementation we'd move the window here. 
-        # For now, let's rely on the snap logic at the end, 
-        # or implement simple movement:
-        self.move(self.pos() + delta)
-        # Note: This simple addition accumulates error because delta is always from start.
-        # Correct logic is handled better if Tab emits 'movement' per frame or we track last pos.
-        # For this snippet, we will rely on the end snap to fix position.
+    def handle_drag_start(self, global_pos):
+        # Calculate where the mouse is relative to the window top-left
+        self.drag_offset = global_pos - self.pos()
+
+    def handle_drag_move(self, global_pos):
+        # Move window to match mouse pos minus the initial offset
+        self.move(global_pos - self.drag_offset)
 
     def handle_drag_end(self):
         self.snap_to_screen_edge()
 
     def snap_to_screen_edge(self):
-        # 1. Find which screen we are on
         center = self.geometry().center()
         screen = QApplication.screenAt(center)
         if not screen: screen = QApplication.primaryScreen()
         
         s_geo = screen.geometry()
         
-        # 2. Calculate distances to edges
         dist_left = abs(center.x() - s_geo.left())
         dist_right = abs(center.x() - s_geo.right())
         dist_top = abs(center.y() - s_geo.top())
@@ -437,30 +424,33 @@ class SlideWindow(QWidget):
         
         self.update_layout(s_geo)
         
-        # 3. Animate to hidden position
         self.is_expanded = False
         self.anim.setStartValue(self.pos())
         self.anim.setEndValue(self.get_hidden_pos(s_geo))
         self.anim.start()
 
     def update_layout(self, s_geo):
-        # Clear layout
-        QWidget().setLayout(self.main_layout) # decouple
+        # explicitly remove widgets from layout so they aren't destroyed
+        # with the layout. setParent alone is not enough in pyqt6.
+        if self.main_layout is not None:
+            self.main_layout.removeWidget(self.tab)
+            self.main_layout.removeWidget(self.content)
+            self.tab.setParent(self.layout_container)
+            self.content.setParent(self.layout_container)
         
-        # Determine radius style based on docking side
-        # The side touching the screen/content should be sharp (0px)
-        # The outer corners should be rounded (10px)
+        # safe to destroy the old layout now
+        QWidget().setLayout(self.main_layout)
+        
         radius_style = ""
         
+        # recreate layout based on dock side
         if self.dock_side in [DockSide.LEFT, DockSide.RIGHT]:
             self.main_layout = QHBoxLayout(self.layout_container)
             self.tab.setFixedSize(TAB_SIZE, 60)
             
             if self.dock_side == DockSide.LEFT:
-                # Docked Left -> Tab points Right -> Left side sharp
                 radius_style = "border-top-left-radius: 0px; border-bottom-left-radius: 0px; border-top-right-radius: 10px; border-bottom-right-radius: 10px;"
-            else: # RIGHT
-                # Docked Right -> Tab points Left -> Right side sharp
+            else: 
                 radius_style = "border-top-left-radius: 10px; border-bottom-left-radius: 10px; border-top-right-radius: 0px; border-bottom-right-radius: 0px;"
                 
         else:
@@ -468,10 +458,8 @@ class SlideWindow(QWidget):
             self.tab.setFixedSize(60, TAB_SIZE)
             
             if self.dock_side == DockSide.TOP:
-                # Docked Top -> Tab points Down -> Top side sharp
                 radius_style = "border-top-left-radius: 0px; border-top-right-radius: 0px; border-bottom-left-radius: 10px; border-bottom-right-radius: 10px;"
-            else: # BOTTOM
-                # Docked Bottom -> Tab points Up -> Bottom side sharp
+            else: 
                 radius_style = "border-top-left-radius: 10px; border-top-right-radius: 10px; border-bottom-left-radius: 0px; border-bottom-right-radius: 0px;"
 
         self.tab.setStyleSheet(f"""
@@ -487,7 +475,7 @@ class SlideWindow(QWidget):
         self.main_layout.setContentsMargins(0,0,0,0)
         self.main_layout.setSpacing(0)
 
-        # Order
+        # re-add items to the new layout
         if self.dock_side == DockSide.LEFT:
             self.main_layout.addWidget(self.content)
             self.main_layout.addWidget(self.tab)
@@ -505,7 +493,6 @@ class SlideWindow(QWidget):
             self.main_layout.addWidget(self.content)
             self.main_layout.setAlignment(self.tab, Qt.AlignmentFlag.AlignHCenter)
 
-        # Resize Container
         if self.dock_side in [DockSide.LEFT, DockSide.RIGHT]:
             self.resize(APP_WIDTH + TAB_SIZE, APP_HEIGHT)
             self.layout_container.resize(APP_WIDTH + TAB_SIZE, APP_HEIGHT)
