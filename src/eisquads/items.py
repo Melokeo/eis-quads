@@ -12,19 +12,76 @@ class TaskDot(QWidget):
         super().__init__(parent)
         self.task = task
         self.dragging = False
-        self.offset = QPoint()
+        self.drag_start_global = QPoint()
+        self.drag_start_dot_pos = QPoint()
+        self.dot_local_pos = QPoint(0, 0)
+        self.text_rect = QRect()
+        self.text_align = Qt.AlignmentFlag.AlignLeft
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.adjust_size()
+        self.update_position()
         self.show()
 
-    def adjust_size(self):
-        font = QFont(UiConfig.DOT_FONT, 9)
+    def update_position(self):
+        if not self.parent(): return
+        
+        p_w = self.parent().width()
+        p_h = self.parent().height()
+        cx, cy = p_w // 2, p_h // 2
+        
+        dx = int(self.task.x * p_w)
+        dy = int(self.task.y * p_h)
+        
+        # Clamp dot to screen
+        dx = max(0, min(dx, p_w - UiConfig.DOT_SIZE))
+        dy = max(0, min(dy, p_h - UiConfig.DOT_SIZE))
+        
+        in_right = dx > cx
+        
+        font = QFont(UiConfig.DOT_FONT, UiConfig.DOT_FONT_SIZE)
         fm = QFontMetrics(font)
         label = self.task.title
-        if len(label) > 12: label = label[:12] + ".."
         
-        width = UiConfig.DOT_SIZE + 8 + fm.horizontalAdvance(label) + 5
-        self.setFixedSize(int(width), 30)
+        MAX_W = 100
+        rect = fm.boundingRect(QRect(0, 0, MAX_W, 0), Qt.TextFlag.TextWordWrap, label)
+        text_w = rect.width() + 5
+        text_h = rect.height()
+        
+        place_right = True
+        
+        if in_right:
+            if dx + UiConfig.DOT_SIZE + text_w <= p_w:
+                place_right = True
+            elif dx - text_w >= cx:
+                place_right = False
+            else:
+                place_right = True
+        else:
+            if dx - text_w >= 0:
+                place_right = False
+            elif dx + UiConfig.DOT_SIZE + text_w <= cx:
+                place_right = True
+            else:
+                place_right = False
+                
+        ds = UiConfig.DOT_SIZE
+        total_h = max(ds, text_h)
+        
+        if place_right:
+            self.dot_local_pos = QPoint(0, (total_h - ds)//2)
+            self.text_rect = QRect(ds + 5, 0, text_w, total_h)
+            w = ds + 5 + text_w
+            x = dx
+            self.text_align = Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter | Qt.TextFlag.TextWordWrap
+        else:
+            self.dot_local_pos = QPoint(text_w + 5, (total_h - ds)//2)
+            self.text_rect = QRect(0, 0, text_w, total_h)
+            w = text_w + 5 + ds
+            x = dx - text_w - 5
+            self.text_align = Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter | Qt.TextFlag.TextWordWrap
+            
+        y = dy - (total_h - ds)//2
+        
+        self.setGeometry(x, y, w, total_h)
         self.update()
 
     def get_color(self):
@@ -54,40 +111,47 @@ class TaskDot(QWidget):
         # draw dot with dynamic color
         painter.setBrush(QBrush(QColor(self.get_color())))
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawEllipse(0, 6, UiConfig.DOT_SIZE, UiConfig.DOT_SIZE)
+        painter.drawEllipse(self.dot_local_pos.x(), self.dot_local_pos.y(), UiConfig.DOT_SIZE, UiConfig.DOT_SIZE)
         
         # draw label
         painter.setPen(QColor(UiConfig.TEXT_COLOR))
-        font = QFont(UiConfig.DOT_FONT, 9)
+        font = QFont(UiConfig.DOT_FONT, UiConfig.DOT_FONT_SIZE)
         painter.setFont(font)
         label = self.task.title
-        if len(label) > 12: label = label[:12] + ".."
         
-        painter.drawText(QRect(UiConfig.DOT_SIZE + 6, 0, self.width(), 30), 
-                         Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, 
+        painter.drawText(self.text_rect, 
+                         self.text_align, 
                          label)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
             self.dragging = True
-            self.offset = event.pos()
+            self.drag_start_global = event.globalPosition().toPoint()
+            
+            if self.parent():
+                p_w, p_h = self.parent().width(), self.parent().height()
+                self.drag_start_dot_pos = QPoint(int(self.task.x * p_w), int(self.task.y * p_h))
+            
             self.raise_()
 
     def mouseMoveEvent(self, event):
         if self.dragging and self.parent():
-            new_pos = self.mapToParent(event.pos()) - self.offset
+            curr_global = event.globalPosition().toPoint()
+            delta = curr_global - self.drag_start_global
+            
+            new_dot_x = self.drag_start_dot_pos.x() + delta.x()
+            new_dot_y = self.drag_start_dot_pos.y() + delta.y()
+            
             p_w, p_h = self.parent().width(), self.parent().height()
             
-            x = max(0, min(new_pos.x(), p_w - UiConfig.DOT_SIZE))
-            y = max(0, min(new_pos.y(), p_h - UiConfig.DOT_SIZE))
-            self.move(x, y)
+            new_dot_x = max(0, min(new_dot_x, p_w - UiConfig.DOT_SIZE))
+            new_dot_y = max(0, min(new_dot_y, p_h - UiConfig.DOT_SIZE))
             
-            # update task coordinates immediately for color calculation
-            self.task.x = x / p_w
-            self.task.y = y / p_h
+            self.task.x = new_dot_x / p_w
+            self.task.y = new_dot_y / p_h
             
-            # force repaint to show new color
-            self.update()
+            self.update_position()
+            self.moved.emit()
             
     def _resolve_overlap(self, current_pos, axis_pos, size):
         if current_pos < axis_pos and (current_pos + size) > axis_pos:
@@ -106,14 +170,17 @@ class TaskDot(QWidget):
                 p_w, p_h = self.parent().width(), self.parent().height()
                 axis_x, axis_y = p_w // 2, p_h // 2
                 
-                new_x = self._resolve_overlap(self.x(), axis_x, UiConfig.DOT_SIZE)
-                new_y = self._resolve_overlap(self.y(), axis_y, UiConfig.DOT_SIZE)
+                # Use dot position from task, not widget position
+                curr_x = int(self.task.x * p_w)
+                curr_y = int(self.task.y * p_h)
                 
-                if new_x != self.x() or new_y != self.y():
-                    self.move(int(new_x), int(new_y))
+                new_x = self._resolve_overlap(curr_x, axis_x, UiConfig.DOT_SIZE)
+                new_y = self._resolve_overlap(curr_y, axis_y, UiConfig.DOT_SIZE)
+                
+                if new_x != curr_x or new_y != curr_y:
                     self.task.x = new_x / p_w
                     self.task.y = new_y / p_h
-                    self.update()
+                    self.update_position()
 
             self.moved.emit()
             

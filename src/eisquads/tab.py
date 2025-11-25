@@ -44,6 +44,8 @@ class DraggableTab(QFrame):
 
     def contextMenuEvent(self, event):
         menu = QMenu(self)
+        menu.setWindowFlags(menu.windowFlags() | Qt.WindowType.FramelessWindowHint | Qt.WindowType.NoDropShadowWindowHint)
+        menu.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         # Apply the app's style to the menu
         menu.setStyleSheet(CONTEXT_MENU_STYLESHEET)
         

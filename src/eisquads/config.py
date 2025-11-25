@@ -14,6 +14,7 @@ class UiConfig:
     DOT_COLOR = "#f38ba8"
     DOT_SIZE = 14
     DOT_FONT = "Segoe UI"
+    DOT_FONT_SIZE = 9
 
 STYLESHEET = f"""
 QWidget {{
@@ -75,9 +76,12 @@ QMenu {{
     background-color: {UiConfig.BG_COLOR}; 
     color: {UiConfig.TEXT_COLOR}; 
     border: 1px solid {UiConfig.ACCENT_COLOR};
+    border-radius: 10px;
 }}
 QMenu::item {{
     padding: 5px 20px;
+    border-radius: 5px;
+    margin: 2px 5px;
 }}
 QMenu::item:selected {{
     background-color: {UiConfig.ACCENT_COLOR};

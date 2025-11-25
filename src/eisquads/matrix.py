@@ -31,7 +31,7 @@ class MatrixCanvas(QFrame):
         self.add_btn.move(self.width() - 40, 10)
         # reposition dots based on new size
         for dot in self.dots:
-            dot.move(int(dot.task.x * self.width()), int(dot.task.y * self.height()))
+            dot.update_position()
         super().resizeEvent(event)
         
     def mouseDoubleClickEvent(self, event):
@@ -51,9 +51,7 @@ class MatrixCanvas(QFrame):
         dot.moved.connect(self.save_data)
         dot.clicked.connect(self.show_details)
         self.dots.append(dot)
-        x = int(task.x * self.width())
-        y = int(task.y * self.height())
-        dot.move(x, y)
+        dot.update_position()
         dot.show()
 
     def add_new_task(self, x=0.5, y=0.5):
@@ -90,7 +88,7 @@ class MatrixCanvas(QFrame):
         else:
             for dot in self.dots:
                 if dot.task.id == task.id:
-                    dot.adjust_size()
+                    dot.update_position()
                     break
         self.save_data()
 
