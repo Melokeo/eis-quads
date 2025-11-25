@@ -250,7 +250,7 @@ class SlideWindow(QWidget):
         if self.should_save:
             try:
                 with open(self.get_state_path(), "w") as f:
-                    json.dump({"x": self.x(), "y": self.y()}, f)
+                    json.dump({"x": self.x(), "y": self.y()}, f, indent=4)
             except Exception:
                 pass
         super().closeEvent(event)

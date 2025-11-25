@@ -141,6 +141,10 @@ class MatrixCanvas(QFrame):
     def handle_task_change(self, task, is_delete):
         if is_delete:
             self.tasks = [t for t in self.tasks if t.id != task.id]
+            # clean up dependencies
+            for t in self.tasks:
+                if task.id in t.dependencies:
+                    t.dependencies.remove(task.id)
             self.refresh_dots()
         else:
             for dot in self.dots:

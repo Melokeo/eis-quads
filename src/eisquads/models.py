@@ -33,7 +33,14 @@ class TaskManager:
                 data = json.load(f)
                 # filter out completed tasks, they are history
                 all_tasks = [Task(**t) for t in data]
-                return [t for t in all_tasks if not t.completed]
+                active_tasks = [t for t in all_tasks if not t.completed]
+                
+                # clean up dependencies pointing to non-existent (or completed) tasks
+                active_ids = {t.id for t in active_tasks}
+                for t in active_tasks:
+                    t.dependencies = [d for d in t.dependencies if d in active_ids]
+                    
+                return active_tasks
         except:
             return []
 
@@ -41,7 +48,7 @@ class TaskManager:
     def save_tasks(tasks):
         file_path = TaskManager.get_storage_path()
         with open(file_path, 'w') as f:
-            json.dump([t.to_dict() for t in tasks], f)
+            json.dump([t.to_dict() for t in tasks], f, indent=4)
 
     @staticmethod
     def create_backup():
