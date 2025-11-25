@@ -224,6 +224,12 @@ class SlideWindow(QWidget):
                 self.key_buffer = ""
             elif self.key_buffer.endswith("exit"):
                 QApplication.instance().quit()
+            elif self.key_buffer.endswith("lock"):
+                self.content.set_locked(True)
+                self.key_buffer = ""
+            elif self.key_buffer.endswith("free"):
+                self.content.set_locked(False)
+                self.key_buffer = ""
 
     def closeEvent(self, event):
         # save current position before closing

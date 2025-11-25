@@ -18,7 +18,6 @@ class TaskDot(QWidget):
         self.text_rect = QRect()
         self.text_align = Qt.AlignmentFlag.AlignLeft
         self.current_pos_type = 'right'
-        # self.setCursor(Qt.CursorShape.PointingHandCursor) 
         self.update_position()
         self.show()
 
@@ -249,6 +248,9 @@ class TaskDot(QWidget):
             self.moved.emit()
 
     def mousePressEvent(self, event):
+        if self.parent() and getattr(self.parent(), 'locked', False):
+            return
+
         if event.button() == Qt.MouseButton.LeftButton:
             self.dragging = True
             self.drag_start_global = event.globalPosition().toPoint()

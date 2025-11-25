@@ -135,6 +135,3 @@ class MatrixCanvas(QFrame):
 
     def set_locked(self, locked: bool):
         self.locked = locked
-        # update cursor for all dots
-        for dot in self.dots:
-            dot.update_cursor()
