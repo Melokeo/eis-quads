@@ -1,7 +1,7 @@
 import uuid
 from PyQt6.QtCore import Qt, QPoint, QPointF
-from PyQt6.QtGui import QColor, QPainter, QPen, QFont, QCursor, QPainterPath, QPainterPathStroker
-from PyQt6.QtWidgets import QWidget, QPushButton, QDialog, QFrame
+from PyQt6.QtGui import QColor, QPainter, QPen, QFont, QCursor, QPainterPath, QPainterPathStroker, QPixmap
+from PyQt6.QtWidgets import QWidget, QPushButton, QDialog, QFrame, QApplication
 from config import UiConfig
 from models import Task, TaskManager
 from items import TaskDot
@@ -19,6 +19,20 @@ class MatrixCanvas(QFrame):
         self.undo_stack = []
         self.redo_stack = []
         self.overlay = DependencyOverlay(self)
+        
+        # Background image state
+        self.bg_pixmap = None
+        self.bg_path = None
+        self.bg_offset = QPointF(0, 0)
+        self.bg_scale = 1.0
+        self.bg_opacity = 0.3
+        self.bg_adjusting = False
+        self.panning = False
+        self.pan_start = QPoint()
+        self.radii = (0, 0, 0, 0) # tl, tr, bl, br
+        
+        self.setFocusPolicy(Qt.FocusPolicy.WheelFocus)
+
         self.init_ui()
 
         # minimal add button
@@ -29,6 +43,12 @@ class MatrixCanvas(QFrame):
         self.add_btn.clicked.connect(self.add_new_task)
         self.add_btn.hide()
         # position set in resizeEvent
+
+    def set_background(self, path):
+        if not path: return
+        self.bg_path = path
+        self.bg_pixmap = QPixmap(path)
+        self.update()
 
     def init_ui(self):
         self.tasks = TaskManager.load_tasks()
@@ -44,6 +64,9 @@ class MatrixCanvas(QFrame):
         super().resizeEvent(event)
         
     def mouseDoubleClickEvent(self, event):
+        if self.bg_adjusting:
+            return
+
         if event.button() == Qt.MouseButton.LeftButton:
             # Check if we clicked on a dependency line
             click_pos = event.pos()
@@ -72,6 +95,59 @@ class MatrixCanvas(QFrame):
             nx = event.pos().x() / self.width()
             ny = event.pos().y() / self.height()
             self.add_new_task(nx, ny)
+
+    def mousePressEvent(self, event):
+        if self.bg_adjusting and event.button() == Qt.MouseButton.LeftButton:
+            self.panning = True
+            self.pan_start = event.pos()
+            self.setCursor(Qt.CursorShape.ClosedHandCursor)
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self.panning:
+            delta = event.pos() - self.pan_start
+            self.bg_offset += QPointF(delta)
+            self.pan_start = event.pos()
+            self.update()
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.panning = False
+            self.setCursor(Qt.CursorShape.ArrowCursor)
+        super().mouseReleaseEvent(event)
+
+    def wheelEvent(self, event):
+        # opacity adjustment (alt + scroll)
+        if QApplication.keyboardModifiers() & Qt.KeyboardModifier.AltModifier:
+            # Check both x and y deltas in case Alt shifts the axis
+            delta = event.angleDelta().y()
+            if delta == 0:
+                delta = event.angleDelta().x()
+                
+            if delta != 0:
+                step = 0.05
+                if delta > 0:
+                    self.bg_opacity = min(1.0, self.bg_opacity + step)
+                else:
+                    self.bg_opacity = max(0.1, self.bg_opacity - step)
+                self.update()
+            event.accept()
+            return
+
+        # handle zoom (adjustment mode)
+        if self.bg_adjusting and self.bg_pixmap:
+            zoom_in = event.angleDelta().y() > 0
+            factor = 1.1 if zoom_in else 0.9
+            
+            mouse_pos = QPointF(event.position())
+            self.bg_offset = mouse_pos - (mouse_pos - self.bg_offset) * factor
+            self.bg_scale *= factor
+            self.update()
+            event.accept()
+            return
+            
+        super().wheelEvent(event)
 
     def refresh_dots(self):
         for dot in self.dots: dot.deleteLater()
@@ -262,6 +338,42 @@ class MatrixCanvas(QFrame):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
         w, h = self.width(), self.height()
+        
+        # Create clip path for rounded corners
+        path = QPainterPath()
+        path.setFillRule(Qt.FillRule.WindingFill)
+        path.addRoundedRect(0, 0, w, h, 0, 0) # Start with rect
+        
+        # If we have radii, we need to construct a complex path or just use a rounded rect if all same?
+        # Actually, QPainterPath.addRoundedRect takes x radius and y radius for ALL corners.
+        # For individual corners, we need to build the path manually.
+        
+        tl, tr, bl, br = self.radii
+        if any(r > 0 for r in self.radii):
+            path = QPainterPath()
+            path.moveTo(tl, 0)
+            path.lineTo(w - tr, 0)
+            path.quadTo(w, 0, w, tr)
+            path.lineTo(w, h - br)
+            path.quadTo(w, h, w - br, h)
+            path.lineTo(bl, h)
+            path.quadTo(0, h, 0, h - bl)
+            path.lineTo(0, tl)
+            path.quadTo(0, 0, tl, 0)
+            path.closeSubpath()
+            
+            painter.setClipPath(path)
+        
+        # Draw background image if exists
+        if self.bg_pixmap and not self.bg_pixmap.isNull():
+            painter.save()
+            painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+            painter.setOpacity(self.bg_opacity)
+            painter.translate(self.bg_offset)
+            painter.scale(self.bg_scale, self.bg_scale)
+            painter.drawPixmap(0, 0, self.bg_pixmap)
+            painter.restore()
+        
         cx, cy = w // 2, h // 2
 
         # axes
@@ -279,6 +391,11 @@ class MatrixCanvas(QFrame):
         # minimal labels
         painter.drawText(w - 30, cy - 5, "Urg")
         painter.drawText(cx + 5, 15, "Imp")
+
+        # Visual hint for background adjustment
+        if self.bg_adjusting:
+            painter.setPen(QColor("#a6da95"))
+            painter.drawText(10, h - 10, "BG...")
 
     def draw_dependencies(self, painter):
         # map id to dot center
@@ -319,16 +436,35 @@ class MatrixCanvas(QFrame):
         return path
 
     def draw_curved_arrow(self, painter, start, end):
+        # Adjust start/end to stop at dot edge
+        start = QPointF(start)
+        end = QPointF(end)
+        
+        offset = UiConfig.DOT_SIZE / 2
+        
+        dx = end.x() - start.x()
+        dy = end.y() - start.y()
+        
+        # Adjust start (horizontal tangent)
+        if abs(dx) > 1:
+            start.setX(start.x() + (offset if dx > 0 else -offset))
+            
+        # Adjust end (tangent is end - ctrl)
+        # ctrl is (start.x + dx/2, start.y) -> tangent vector is (dx/2, dy)
+        t_vec = QPointF(dx * 0.5, dy)
+        t_len = math.sqrt(t_vec.x()**2 + t_vec.y()**2)
+        
+        if t_len > 0:
+            end = end - t_vec * (offset / t_len)
+
         path = self.get_arrow_path(start, end)
         painter.drawPath(path)
         
         # arrowhead
         # calculate angle at end
         # derivative of quad bezier at t=1 is 2(P2 - P1) where P1 is ctrl, P2 is end
-        # actually it's 2(1-t)(P1-P0) + 2t(P2-P1). At t=1, it's 2(P2-P1)
         
-        start = QPointF(start)
-        end = QPointF(end)
+        # Recalculate for new points
         dx = end.x() - start.x()
         ctrl = QPointF(start.x() + dx * 0.5, start.y())
         
@@ -364,6 +500,10 @@ class MatrixCanvas(QFrame):
 
     def set_locked(self, locked: bool):
         self.locked = locked
+
+    def set_radii(self, tl, tr, bl, br):
+        self.radii = (tl, tr, bl, br)
+        self.update()
 
 class DependencyOverlay(QWidget):
     def __init__(self, parent=None):

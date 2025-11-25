@@ -1,8 +1,9 @@
 import json
 import os
+import shutil
 from pathlib import Path
-from PyQt6.QtCore import Qt, QPoint, QPropertyAnimation, QEasingCurve, QEvent
-from PyQt6.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QApplication
+from PyQt6.QtCore import Qt, QPoint, QPointF, QPropertyAnimation, QEasingCurve, QEvent
+from PyQt6.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QApplication, QFileDialog
 from config import UiConfig, STYLESHEET, DockSide, get_storage_dir
 from tab import DraggableTab
 from matrix import MatrixCanvas
@@ -16,6 +17,7 @@ class SlideWindow(QWidget):
         self.drag_offset = QPoint() 
         self.key_buffer = ""
         self.should_save = True
+        self.ignore_deactivation = False
 
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | 
                             Qt.WindowType.WindowStaysOnTopHint | 
@@ -38,6 +40,7 @@ class SlideWindow(QWidget):
         self.content.setStyleSheet(f"background-color: {UiConfig.BG_COLOR}; border: 1px solid {UiConfig.QUAD_LINES_COLOR};")
 
         self.layout_container = QWidget(self)
+        self.layout_container.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.main_layout = QHBoxLayout(self.layout_container)
         self.main_layout.setContentsMargins(0,0,0,0)
         self.main_layout.setSpacing(0)
@@ -126,17 +129,18 @@ class SlideWindow(QWidget):
 
         self.tab.setStyleSheet(f"""
             QFrame {{
-                background-color: {UiConfig.ACCENT_COLOR};
+                background-color: {UiConfig.TAB_COLOR};
                 {tab_radius_style}
             }}
             QFrame:hover {{
-                background-color: #b4befe;
+                background-color: #aedabf;
             }}
         """)
         
         self.content.setStyleSheet(f"background-color: {UiConfig.BG_COLOR}; border: 1px solid {UiConfig.QUAD_LINES_COLOR}; {content_radius_style}")
+        self.content.set_radii(ttl, ttr, tbl, tbr)
 
-        # determine widget order: Content first for Left/Top, Tab first for Right/Bottom
+        # determine widget order: content first for Left/Top, tab first for Right/Bottom
         widgets = [self.content, self.tab] if self.dock_side in [DockSide.LEFT, DockSide.TOP] else [self.tab, self.content]
         for w in widgets:
             self.main_layout.addWidget(w)
@@ -156,6 +160,14 @@ class SlideWindow(QWidget):
                 with open(path, "r") as f:
                     data = json.load(f)
                     self.move(data.get("x", 100), data.get("y", 100))
+                    
+                    # load background state
+                    bg_image = data.get("bg_image")
+                    if bg_image and os.path.exists(bg_image):
+                        self.content.set_background(bg_image)
+                        self.content.bg_offset = QPointF(data.get("bg_x", 0), data.get("bg_y", 0))
+                        self.content.bg_scale = data.get("bg_scale", 1.0)
+                        self.content.bg_opacity = data.get("bg_opacity", 0.3)
         except Exception:
             pass
 
@@ -206,7 +218,8 @@ class SlideWindow(QWidget):
 
     def eventFilter(self, obj, event):
         if event.type() == QEvent.Type.WindowDeactivate and self.is_expanded:
-            self.toggle_slide()
+            if not self.ignore_deactivation:
+                self.toggle_slide()
             return True
         return super().eventFilter(obj, event)
 
@@ -215,9 +228,20 @@ class SlideWindow(QWidget):
             QApplication.instance().quit()
             return
         
+        # Consume Alt key to prevent system menu interference during scrolling
+        if event.key() == Qt.Key.Key_Alt:
+            event.accept()
+            return
+        
         if event.key() == Qt.Key.Key_F5:
             self.content.reload_tasks()
             return
+
+        if event.key() == Qt.Key.Key_Return or event.key() == Qt.Key.Key_Enter:
+            if self.content.bg_adjusting:
+                self.content.bg_adjusting = False
+                self.content.update()
+                return
 
         # Undo/Redo shortcuts
         if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
@@ -266,13 +290,40 @@ class SlideWindow(QWidget):
                 TaskManager.restore_backup()
                 self.content.reload_tasks()
                 self.key_buffer = ""
+            elif self.key_buffer.endswith("bg"):
+                self.ignore_deactivation = True
+                file_path, _ = QFileDialog.getOpenFileName(self, "Select Background", "", "Images (*.png *.jpg *.jpeg *.bmp)")
+                self.ignore_deactivation = False
+                self.activateWindow()
+                self.content.setFocus()
+                
+                if file_path:
+                    try:
+                        storage_dir = get_storage_dir()
+                        ext = os.path.splitext(file_path)[1]
+                        dest_path = storage_dir / f"background{ext}"
+                        shutil.copy2(file_path, dest_path)
+                        self.content.set_background(str(dest_path))
+                        self.content.bg_adjusting = True
+                    except Exception:
+                        pass
+                self.key_buffer = ""
 
     def closeEvent(self, event):
         # save current position before closing
         if self.should_save:
             try:
+                state = {
+                    "x": self.x(), 
+                    "y": self.y(),
+                    "bg_image": self.content.bg_path,
+                    "bg_x": int(self.content.bg_offset.x()),
+                    "bg_y": int(self.content.bg_offset.y()),
+                    "bg_scale": self.content.bg_scale,
+                    "bg_opacity": self.content.bg_opacity
+                }
                 with open(self.get_state_path(), "w") as f:
-                    json.dump({"x": self.x(), "y": self.y()}, f, indent=4)
+                    json.dump(state, f, indent=4)
             except Exception:
                 pass
         super().closeEvent(event)

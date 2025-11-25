@@ -30,6 +30,7 @@ class UiConfig:
     APP_WIDTH = 360
     APP_HEIGHT = 250
     TAB_SIZE = 24  # width or height depending on orientation
+    TAB_COLOR = "#8abb9e"
     BG_COLOR = "#1e1e2e"
     QUAD_LINES_COLOR = "#5C5E7E"
     TEXT_COLOR = "#cdd6f4"
@@ -86,7 +87,7 @@ DETAIL_POPUP_STYLESHEET = f"background-color: {UiConfig.BG_COLOR}; border: 1px s
 
 DRAG_TAB_STYLESHEET = f"""
 QFrame {{
-    background-color: {UiConfig.ACCENT_COLOR};
+    background-color: {UiConfig.TAB_COLOR};
     border-radius: 0px;
 }}
 QFrame:hover {{

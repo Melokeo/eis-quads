@@ -25,22 +25,26 @@ class DraggableTab(QFrame):
             self.setCursor(Qt.CursorShape.ClosedHandCursor)
             # Emit raw global pos
             self.drag_started.emit(self.drag_start_pos)
-        elif event.button() == Qt.MouseButton.LeftButton:
-            self.clicked.emit()
+        else:
+            super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
         if self.dragging:
             # Emit raw global pos
             self.drag_moved.emit(event.globalPosition().toPoint())
+        else:
+            super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
-        if self.dragging:
+        if self.dragging and event.button() == Qt.MouseButton.LeftButton:
             self.dragging = False
             self.setCursor(Qt.CursorShape.OpenHandCursor)
             if (event.globalPosition().toPoint() - self.drag_start_pos).manhattanLength() < 5:
                 self.clicked.emit()
             else:
                 self.drag_ended.emit()
+        else:
+            super().mouseReleaseEvent(event)
 
     def contextMenuEvent(self, event):
         menu = QMenu(self)

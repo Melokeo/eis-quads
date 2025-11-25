@@ -248,6 +248,9 @@ class TaskDot(QWidget):
                          label)
 
     def mouseDoubleClickEvent(self, event):
+        if self.parent() and getattr(self.parent(), 'bg_adjusting', False):
+            return
+
         if event.button() == Qt.MouseButton.LeftButton:
             if self.parent():
                 self.parent().push_undo('complete')
@@ -256,7 +259,7 @@ class TaskDot(QWidget):
             self.moved.emit()
 
     def mousePressEvent(self, event):
-        if self.parent() and getattr(self.parent(), 'locked', False):
+        if self.parent() and (getattr(self.parent(), 'locked', False) or getattr(self.parent(), 'bg_adjusting', False)):
             return
 
         if event.button() == Qt.MouseButton.MiddleButton:
