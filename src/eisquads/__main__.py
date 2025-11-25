@@ -495,6 +495,7 @@ class SlideWindow(QWidget):
         self.setStyleSheet(STYLESHEET)
         QApplication.instance().installEventFilter(self)
         
+        self.load_state()
         self.snap_to_screen_edge()
 
     def handle_drag_start(self, global_pos):
@@ -605,6 +606,15 @@ class SlideWindow(QWidget):
             self.resize(APP_WIDTH, APP_HEIGHT + TAB_SIZE)
             self.layout_container.resize(APP_WIDTH, APP_HEIGHT + TAB_SIZE)
 
+    def load_state(self):
+        try:
+            if os.path.exists("window_state.json"):
+                with open("window_state.json", "r") as f:
+                    data = json.load(f)
+                    self.move(data.get("x", 100), data.get("y", 100))
+        except Exception:
+            pass
+
     def get_hidden_pos(self, s_geo):
         if self.dock_side == DockSide.LEFT:
             # Window at left edge. Content is left of Tab.
@@ -668,6 +678,12 @@ class SlideWindow(QWidget):
     def keyPressEvent(self, event):
         if event.key() == Qt.Key.Key_Escape:
             QApplication.instance().quit()
+
+    def closeEvent(self, event):
+        # save current position before closing
+        with open("window_state.json", "w") as f:
+            json.dump({"x": self.x(), "y": self.y()}, f)
+        super().closeEvent(event)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
