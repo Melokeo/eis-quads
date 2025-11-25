@@ -1,7 +1,7 @@
 from PyQt6.QtCore import Qt, QPoint, pyqtSignal
 from PyQt6.QtWidgets import QFrame, QMenu, QApplication
 from PyQt6.QtGui import QAction
-from config import TAB_SIZE, ACCENT_COLOR, BG_COLOR, TEXT_COLOR
+from config import DRAG_TAB_STYLESHEET, CONTEXT_MENU_STYLESHEET, UiConfig
 
 class DraggableTab(QFrame):
     # Change signals to carry raw global position
@@ -12,16 +12,8 @@ class DraggableTab(QFrame):
 
     def __init__(self):
         super().__init__()
-        self.setFixedSize(TAB_SIZE, 60)
-        self.setStyleSheet(f"""
-            QFrame {{
-                background-color: {ACCENT_COLOR};
-                border-radius: 0px;
-            }}
-            QFrame:hover {{
-                background-color: #b4befe;
-            }}
-        """)
+        self.setFixedSize(UiConfig.TAB_SIZE, 60)
+        self.setStyleSheet(DRAG_TAB_STYLESHEET)
         self.setCursor(Qt.CursorShape.OpenHandCursor)
         self.dragging = False
         self.drag_start_pos = QPoint()
@@ -53,20 +45,7 @@ class DraggableTab(QFrame):
     def contextMenuEvent(self, event):
         menu = QMenu(self)
         # Apply the app's style to the menu
-        menu.setStyleSheet(f"""
-            QMenu {{
-                background-color: {BG_COLOR}; 
-                color: {TEXT_COLOR}; 
-                border: 1px solid {ACCENT_COLOR};
-            }}
-            QMenu::item {{
-                padding: 5px 20px;
-            }}
-            QMenu::item:selected {{
-                background-color: {ACCENT_COLOR};
-                color: {BG_COLOR};
-            }}
-        """)
+        menu.setStyleSheet(CONTEXT_MENU_STYLESHEET)
         
         close_action = QAction("Quit", self)
         close_action.triggered.connect(QApplication.instance().quit)

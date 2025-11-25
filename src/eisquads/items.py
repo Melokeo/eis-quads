@@ -1,7 +1,7 @@
 from PyQt6.QtCore import Qt, QPoint, QRect, pyqtSignal
 from PyQt6.QtGui import QColor, QPainter, QBrush, QFont
 from PyQt6.QtWidgets import QWidget
-from config import DOT_SIZE, TEXT_COLOR
+from config import UiConfig
 from models import Task
 
 class TaskDot(QWidget):
@@ -44,15 +44,15 @@ class TaskDot(QWidget):
         # draw dot with dynamic color
         painter.setBrush(QBrush(QColor(self.get_color())))
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawEllipse(0, 6, DOT_SIZE, DOT_SIZE)
+        painter.drawEllipse(0, 6, UiConfig.DOT_SIZE, UiConfig.DOT_SIZE)
         
         # draw label
-        painter.setPen(QColor(TEXT_COLOR))
+        painter.setPen(QColor(UiConfig.TEXT_COLOR))
         font = QFont("Segoe UI", 9)
         painter.setFont(font)
         label = self.task.title
         if len(label) > 12: label = label[:12] + ".."
-        painter.drawText(QRect(DOT_SIZE + 4, 0, 100, 30), 
+        painter.drawText(QRect(UiConfig.DOT_SIZE + 4, 0, 100, 30), 
                          Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, 
                          label)
 
@@ -67,8 +67,8 @@ class TaskDot(QWidget):
             new_pos = self.mapToParent(event.pos()) - self.offset
             p_w, p_h = self.parent().width(), self.parent().height()
             
-            x = max(0, min(new_pos.x(), p_w - DOT_SIZE))
-            y = max(0, min(new_pos.y(), p_h - DOT_SIZE))
+            x = max(0, min(new_pos.x(), p_w - UiConfig.DOT_SIZE))
+            y = max(0, min(new_pos.y(), p_h - UiConfig.DOT_SIZE))
             self.move(x, y)
             
             # update task coordinates immediately for color calculation
@@ -78,50 +78,31 @@ class TaskDot(QWidget):
             # force repaint to show new color
             self.update()
             
+    def _resolve_overlap(self, current_pos, axis_pos, size):
+        if current_pos < axis_pos and (current_pos + size) > axis_pos:
+            center = current_pos + size / 2
+            if center < axis_pos:
+                return axis_pos - size - 2
+            else:
+                return axis_pos + 2
+        return current_pos
+
     def mouseReleaseEvent(self, event):
         if self.dragging:
             self.dragging = False
             
             if self.parent():
-                p_w = self.parent().width()
-                p_h = self.parent().height()
+                p_w, p_h = self.parent().width(), self.parent().height()
+                axis_x, axis_y = p_w // 2, p_h // 2
                 
-                # Get current pixel positions
-                curr_x = self.x()
-                curr_y = self.y()
+                new_x = self._resolve_overlap(self.x(), axis_x, UiConfig.DOT_SIZE)
+                new_y = self._resolve_overlap(self.y(), axis_y, UiConfig.DOT_SIZE)
                 
-                # Define axis locations
-                axis_x = p_w // 2
-                axis_y = p_h // 2
-                
-                snapped = False
-                new_x = curr_x
-                new_y = curr_y
-                
-                # 1. Check Vertical Axis Overlap
-                # Logic: Left side is left of axis, Right side is right of axis
-                if curr_x < axis_x and (curr_x + DOT_SIZE) > axis_x:
-                    snapped = True
-                    # Decide direction based on where the center of the dot is
-                    if (curr_x + DOT_SIZE / 2) < axis_x:
-                        new_x = axis_x - DOT_SIZE - 2  # Push just left of axis
-                    else:
-                        new_x = axis_x + 2             # Push just right of axis
-
-                # 2. Check Horizontal Axis Overlap
-                if curr_y < axis_y and (curr_y + DOT_SIZE) > axis_y:
-                    snapped = True
-                    if (curr_y + DOT_SIZE / 2) < axis_y:
-                        new_y = axis_y - DOT_SIZE - 2  # Push just above axis
-                    else:
-                        new_y = axis_y + 2             # Push just below axis
-            
-                if snapped:
+                if new_x != self.x() or new_y != self.y():
                     self.move(int(new_x), int(new_y))
-                    # Update normalized coordinates
                     self.task.x = new_x / p_w
                     self.task.y = new_y / p_h
-                    self.update() # Force color refresh
+                    self.update()
 
             self.moved.emit()
             

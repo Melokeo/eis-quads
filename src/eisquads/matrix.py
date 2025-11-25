@@ -2,7 +2,7 @@ import uuid
 from PyQt6.QtCore import Qt, QPoint
 from PyQt6.QtGui import QColor, QPainter, QPen, QFont, QCursor
 from PyQt6.QtWidgets import QWidget, QPushButton, QDialog
-from config import BG_COLOR, QUAD_LINES_COLOR, DOT_SIZE
+from config import UiConfig
 from models import Task, TaskManager
 from items import TaskDot
 from dialogs import NameInput, DetailPopup
@@ -78,7 +78,7 @@ class MatrixCanvas(QWidget):
 
     def show_details(self, dot_widget):
         popup = DetailPopup(dot_widget.task, self)
-        global_pos = dot_widget.mapToGlobal(QPoint(DOT_SIZE + 10, 0))
+        global_pos = dot_widget.mapToGlobal(QPoint(UiConfig.DOT_SIZE + 10, 0))
         popup.move(global_pos)
         popup.data_changed.connect(self.handle_task_change)
         popup.exec()
@@ -98,13 +98,13 @@ class MatrixCanvas(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
-        painter.fillRect(self.rect(), QColor(BG_COLOR))
+        painter.fillRect(self.rect(), QColor(UiConfig.BG_COLOR))
         
         w, h = self.width(), self.height()
         cx, cy = w // 2, h // 2
 
         # axes
-        pen = QPen(QColor(QUAD_LINES_COLOR))
+        pen = QPen(QColor(UiConfig.QUAD_LINES_COLOR))
         pen.setWidth(2)
         painter.setPen(pen)
         painter.drawLine(cx, 0, cx, h)

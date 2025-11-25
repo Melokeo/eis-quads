@@ -2,7 +2,7 @@ import json
 import os
 from PyQt6.QtCore import Qt, QPoint, QPropertyAnimation, QEasingCurve, QEvent
 from PyQt6.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QApplication
-from config import APP_WIDTH, APP_HEIGHT, TAB_SIZE, BG_COLOR, QUAD_LINES_COLOR, ACCENT_COLOR, STYLESHEET, DockSide
+from config import UiConfig, STYLESHEET, DockSide
 from tab import DraggableTab
 from matrix import MatrixCanvas
 
@@ -30,8 +30,8 @@ class SlideWindow(QWidget):
         self.tab.clicked.connect(self.toggle_slide)
 
         self.content = MatrixCanvas()
-        self.content.setFixedSize(APP_WIDTH, APP_HEIGHT)
-        self.content.setStyleSheet(f"background-color: {BG_COLOR}; border: 1px solid {QUAD_LINES_COLOR};")
+        self.content.setFixedSize(UiConfig.APP_WIDTH, UiConfig.APP_HEIGHT)
+        self.content.setStyleSheet(f"background-color: {UiConfig.BG_COLOR}; border: 1px solid {UiConfig.QUAD_LINES_COLOR};")
 
         self.layout_container = QWidget(self)
         self.main_layout = QHBoxLayout(self.layout_container)
@@ -82,76 +82,53 @@ class SlideWindow(QWidget):
         self.anim.start()
 
     def update_layout(self, s_geo):
-        # explicitly remove widgets from layout so they aren't destroyed
-        # with the layout. setParent alone is not enough in pyqt6.
-        if self.main_layout is not None:
+        if self.main_layout:
             self.main_layout.removeWidget(self.tab)
             self.main_layout.removeWidget(self.content)
             self.tab.setParent(self.layout_container)
             self.content.setParent(self.layout_container)
-        
-        # safe to destroy the old layout now
-        QWidget().setLayout(self.main_layout)
-        
-        radius_style = ""
-        
-        # recreate layout based on dock side
-        if self.dock_side in [DockSide.LEFT, DockSide.RIGHT]:
-            self.main_layout = QHBoxLayout(self.layout_container)
-            self.tab.setFixedSize(TAB_SIZE, 60)
-            
-            if self.dock_side == DockSide.LEFT:
-                radius_style = "border-top-left-radius: 0px; border-bottom-left-radius: 0px; border-top-right-radius: 10px; border-bottom-right-radius: 10px;"
-            else: 
-                radius_style = "border-top-left-radius: 10px; border-bottom-left-radius: 10px; border-top-right-radius: 0px; border-bottom-right-radius: 0px;"
-                
+            QWidget().setLayout(self.main_layout)
+
+        is_vertical = self.dock_side in [DockSide.LEFT, DockSide.RIGHT]
+        self.main_layout = QHBoxLayout(self.layout_container) if is_vertical else QVBoxLayout(self.layout_container)
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
+        self.main_layout.setSpacing(0)
+
+        if is_vertical:
+            self.tab.setFixedSize(UiConfig.TAB_SIZE, 60)
+            align = Qt.AlignmentFlag.AlignVCenter
+            w, h = UiConfig.APP_WIDTH + UiConfig.TAB_SIZE, UiConfig.APP_HEIGHT
         else:
-            self.main_layout = QVBoxLayout(self.layout_container)
-            self.tab.setFixedSize(60, TAB_SIZE)
-            
-            if self.dock_side == DockSide.TOP:
-                radius_style = "border-top-left-radius: 0px; border-top-right-radius: 0px; border-bottom-left-radius: 10px; border-bottom-right-radius: 10px;"
-            else: 
-                radius_style = "border-top-left-radius: 10px; border-top-right-radius: 10px; border-bottom-left-radius: 0px; border-bottom-right-radius: 0px;"
+            self.tab.setFixedSize(60, UiConfig.TAB_SIZE)
+            align = Qt.AlignmentFlag.AlignHCenter
+            w, h = UiConfig.APP_WIDTH, UiConfig.APP_HEIGHT + UiConfig.TAB_SIZE
+
+        r_tl = "10px" if self.dock_side in [DockSide.RIGHT, DockSide.BOTTOM] else "0px"
+        r_tr = "10px" if self.dock_side in [DockSide.LEFT, DockSide.BOTTOM] else "0px"
+        r_bl = "10px" if self.dock_side in [DockSide.RIGHT, DockSide.TOP] else "0px"
+        r_br = "10px" if self.dock_side in [DockSide.LEFT, DockSide.TOP] else "0px"
 
         self.tab.setStyleSheet(f"""
             QFrame {{
-                background-color: {ACCENT_COLOR};
-                {radius_style}
+                background-color: {UiConfig.ACCENT_COLOR};
+                border-top-left-radius: {r_tl};
+                border-top-right-radius: {r_tr};
+                border-bottom-left-radius: {r_bl};
+                border-bottom-right-radius: {r_br};
             }}
             QFrame:hover {{
                 background-color: #b4befe;
             }}
         """)
 
-        self.main_layout.setContentsMargins(0,0,0,0)
-        self.main_layout.setSpacing(0)
+        first, second = (self.tab, self.content) if self.dock_side in [DockSide.RIGHT, DockSide.BOTTOM] else (self.content, self.tab)
+        self.main_layout.addWidget(first)
+        self.main_layout.addWidget(second)
+        self.main_layout.setAlignment(self.tab, align)
 
-        # re-add items to the new layout
-        if self.dock_side == DockSide.LEFT:
-            self.main_layout.addWidget(self.content)
-            self.main_layout.addWidget(self.tab)
-            self.main_layout.setAlignment(self.tab, Qt.AlignmentFlag.AlignVCenter)
-        elif self.dock_side == DockSide.RIGHT:
-            self.main_layout.addWidget(self.tab)
-            self.main_layout.addWidget(self.content)
-            self.main_layout.setAlignment(self.tab, Qt.AlignmentFlag.AlignVCenter)
-        elif self.dock_side == DockSide.TOP:
-            self.main_layout.addWidget(self.content)
-            self.main_layout.addWidget(self.tab)
-            self.main_layout.setAlignment(self.tab, Qt.AlignmentFlag.AlignHCenter)
-        elif self.dock_side == DockSide.BOTTOM:
-            self.main_layout.addWidget(self.tab)
-            self.main_layout.addWidget(self.content)
-            self.main_layout.setAlignment(self.tab, Qt.AlignmentFlag.AlignHCenter)
-
-        if self.dock_side in [DockSide.LEFT, DockSide.RIGHT]:
-            self.resize(APP_WIDTH + TAB_SIZE, APP_HEIGHT)
-            self.layout_container.resize(APP_WIDTH + TAB_SIZE, APP_HEIGHT)
-        else:
-            self.resize(APP_WIDTH, APP_HEIGHT + TAB_SIZE)
-            self.layout_container.resize(APP_WIDTH, APP_HEIGHT + TAB_SIZE)
-
+        self.resize(w, h)
+        self.layout_container.resize(w, h)
+            
     def load_state(self):
         try:
             if os.path.exists("window_state.json"):
@@ -162,27 +139,18 @@ class SlideWindow(QWidget):
             pass
 
     def get_hidden_pos(self, s_geo):
+        # Clamp orthogonal coordinate to keep window on screen
+        clamped_x = max(s_geo.left(), min(self.x(), s_geo.right() - UiConfig.APP_WIDTH))
+        clamped_y = max(s_geo.top(), min(self.y(), s_geo.bottom() - UiConfig.APP_HEIGHT))
+
         if self.dock_side == DockSide.LEFT:
-            # Window at left edge. Content is left of Tab.
-            # Shown: Content visible at 0. Tab at APP_WIDTH.
-            # Hidden: Content at -APP_WIDTH. Tab at 0.
-            # Position of Window top-left:
-            return QPoint(s_geo.left() - APP_WIDTH, max(s_geo.top(), min(self.y(), s_geo.bottom() - APP_HEIGHT)))
-        
+            return QPoint(s_geo.left() - UiConfig.APP_WIDTH, clamped_y)
         elif self.dock_side == DockSide.RIGHT:
-            # Window at right edge. Tab | Content.
-            # Hidden: Window at ScreenRight - TAB.
-            return QPoint(s_geo.right() - TAB_SIZE, max(s_geo.top(), min(self.y(), s_geo.bottom() - APP_HEIGHT)))
-            
+            return QPoint(s_geo.right() - UiConfig.TAB_SIZE, clamped_y)
         elif self.dock_side == DockSide.TOP:
-            # Top edge. Content / Tab.
-            # Hidden: Window Top at -APP_HEIGHT.
-            return QPoint(max(s_geo.left(), min(self.x(), s_geo.right() - APP_WIDTH)), s_geo.top() - APP_HEIGHT)
-            
+            return QPoint(clamped_x, s_geo.top() - UiConfig.APP_HEIGHT)
         elif self.dock_side == DockSide.BOTTOM:
-            # Bottom edge. Tab / Content.
-            # Hidden: Window Top at ScreenBottom - TAB.
-            return QPoint(max(s_geo.left(), min(self.x(), s_geo.right() - APP_WIDTH)), s_geo.bottom() - TAB_SIZE)
+            return QPoint(clamped_x, s_geo.bottom() - UiConfig.TAB_SIZE)
 
     def get_shown_pos(self, s_geo):
         current = self.get_hidden_pos(s_geo) # Use current 'orthagonal' coord
@@ -190,12 +158,12 @@ class SlideWindow(QWidget):
         if self.dock_side == DockSide.LEFT:
             return QPoint(s_geo.left(), current.y())
         elif self.dock_side == DockSide.RIGHT:
-            return QPoint(s_geo.right() - (APP_WIDTH + TAB_SIZE), current.y())
+            return QPoint(s_geo.right() - (UiConfig.APP_WIDTH + UiConfig.TAB_SIZE), current.y())
         elif self.dock_side == DockSide.TOP:
             return QPoint(current.x(), s_geo.top())
         elif self.dock_side == DockSide.BOTTOM:
-            return QPoint(current.x(), s_geo.bottom() - (APP_HEIGHT + TAB_SIZE))
-
+            return QPoint(current.x(), s_geo.bottom() - (UiConfig.APP_HEIGHT + UiConfig.TAB_SIZE))
+        
     def toggle_slide(self):
         screen = QApplication.screenAt(self.geometry().center())
         if not screen: screen = QApplication.primaryScreen()

@@ -2,7 +2,7 @@ from PyQt6.QtCore import Qt, pyqtSignal, QPoint
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLineEdit, 
                              QTextEdit, QPushButton, QFrame, QGraphicsDropShadowEffect)
 from PyQt6.QtGui import QColor
-from config import BG_COLOR, TEXT_COLOR, ACCENT_COLOR, DOT_SIZE
+from config import INPUT_STYLESHEET, DETAIL_POPUP_STYLESHEET
 from models import Task
 
 class NameInput(QDialog):
@@ -18,14 +18,7 @@ class NameInput(QDialog):
         self.input = QLineEdit()
         self.input.setPlaceholderText("task name...")
         self.input.setFixedSize(200, 40)
-        self.input.setStyleSheet(f"""
-            background-color: {BG_COLOR}; 
-            color: {TEXT_COLOR};
-            border: 2px solid {ACCENT_COLOR}; 
-            border-radius: 8px;
-            padding: 5px;
-            font-size: 14px;
-        """)
+        self.input.setStyleSheet(INPUT_STYLESHEET)
         self.input.returnPressed.connect(self.accept)
         layout.addWidget(self.input)
 
@@ -47,7 +40,7 @@ class DetailPopup(QDialog):
         self.setLayout(layout)
 
         container = QFrame()
-        container.setStyleSheet(f"background-color: {BG_COLOR}; border: 1px solid {ACCENT_COLOR}; border-radius: 8px;")
+        container.setStyleSheet(DETAIL_POPUP_STYLESHEET)
         
         shadow = QGraphicsDropShadowEffect()
         shadow.setBlurRadius(20)
