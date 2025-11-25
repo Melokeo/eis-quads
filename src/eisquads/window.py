@@ -2,8 +2,7 @@ import json
 import os
 from PyQt6.QtCore import Qt, QPoint, QPropertyAnimation, QEasingCurve, QEvent
 from PyQt6.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QApplication
-from config import APP_WIDTH, APP_HEIGHT, TAB_SIZE, BG_COLOR, QUAD_LINES_COLOR, ACCENT_COLOR, DockSide
-from style import STYLESHEET
+from config import APP_WIDTH, APP_HEIGHT, TAB_SIZE, BG_COLOR, QUAD_LINES_COLOR, ACCENT_COLOR, STYLESHEET, DockSide
 from tab import DraggableTab
 from matrix import MatrixCanvas
 
