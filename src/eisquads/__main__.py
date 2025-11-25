@@ -119,29 +119,9 @@ class NameInput(QDialog):
         self.input.returnPressed.connect(self.accept)
         layout.addWidget(self.input)
 
-class NameInput(QDialog):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowFlags(Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint)
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        
-        layout = QVBoxLayout()
-        layout.setContentsMargins(0, 0, 0, 0)
-        self.setLayout(layout)
-
-        self.input = QLineEdit()
-        self.input.setPlaceholderText("task name...")
-        self.input.setFixedSize(200, 40)
-        self.input.setStyleSheet(f"""
-            background-color: {BG_COLOR}; 
-            color: {TEXT_COLOR};
-            border: 2px solid {ACCENT_COLOR}; 
-            border-radius: 8px;
-            padding: 5px;
-            font-size: 14px;
-        """)
-        self.input.returnPressed.connect(self.accept)
-        layout.addWidget(self.input)
+    def showEvent(self, event):
+        super().showEvent(event)
+        self.input.setFocus()
 
 class TaskDot(QWidget):
     moved = pyqtSignal()
@@ -156,12 +136,32 @@ class TaskDot(QWidget):
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.show()
 
+    def get_color(self):
+        # determine quadrant based on current normalized position
+        # x axis: left (low urg) / right (high urg)
+        # y axis: top (high imp) / bottom (low imp)
+        
+        x = self.task.x
+        y = self.task.y
+        
+        is_urg = x > 0.5
+        is_imp = y < 0.5
+        
+        if is_urg and is_imp:
+            return "#ff5555" # red (urg/imp)
+        elif is_urg and not is_imp:
+            return "#f9e2af" # dim yellow (urg/not imp)
+        elif not is_urg and is_imp:
+            return "#fab387" # orange (imp)
+        else:
+            return "#585b70" # grey (not urg/not imp)
+
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
-        # draw dot
-        painter.setBrush(QBrush(QColor(DOT_COLOR)))
+        # draw dot with dynamic color
+        painter.setBrush(QBrush(QColor(self.get_color())))
         painter.setPen(Qt.PenStyle.NoPen)
         painter.drawEllipse(0, 6, DOT_SIZE, DOT_SIZE)
         
@@ -190,15 +190,18 @@ class TaskDot(QWidget):
             y = max(0, min(new_pos.y(), p_h - DOT_SIZE))
             self.move(x, y)
             
+            # update task coordinates immediately for color calculation
             self.task.x = x / p_w
             self.task.y = y / p_h
+            
+            # force repaint to show new color
+            self.update()
             
     def mouseReleaseEvent(self, event):
         if self.dragging:
             self.dragging = False
             
             # snap to quadrant center if near border (0.5)
-            # threshold is 5% of normalized width
             threshold = 0.05
             snapped = False
             
@@ -213,6 +216,7 @@ class TaskDot(QWidget):
             if snapped and self.parent():
                 self.move(int(self.task.x * self.parent().width()), 
                           int(self.task.y * self.parent().height()))
+                self.update() # ensure color updates after snap
 
             self.moved.emit()
             
@@ -278,63 +282,6 @@ class DetailPopup(QDialog):
     def delete(self):
         self.data_changed.emit(self.task, True)
         self.close()
-
-class TaskDot(QWidget):
-    moved = pyqtSignal()
-    clicked = pyqtSignal(object)
-
-    def __init__(self, task: Task, parent=None):
-        super().__init__(parent)
-        self.task = task
-        self.setFixedSize(120, 30)
-        self.dragging = False
-        self.offset = QPoint()
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.show()
-
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        
-        # Draw Dot
-        painter.setBrush(QBrush(QColor(DOT_COLOR)))
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawEllipse(0, 6, DOT_SIZE, DOT_SIZE)
-        
-        # Draw Label
-        painter.setPen(QColor(TEXT_COLOR))
-        font = QFont("Segoe UI", 9)
-        painter.setFont(font)
-        label = self.task.title
-        if len(label) > 12: label = label[:12] + ".."
-        painter.drawText(QRect(DOT_SIZE + 4, 0, 100, 30), 
-                         Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, 
-                         label)
-
-    def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
-            self.dragging = True
-            self.offset = event.pos()
-            self.raise_()
-
-    def mouseMoveEvent(self, event):
-        if self.dragging and self.parent():
-            new_pos = self.mapToParent(event.pos()) - self.offset
-            p_w, p_h = self.parent().width(), self.parent().height()
-            
-            x = max(0, min(new_pos.x(), p_w - DOT_SIZE))
-            y = max(0, min(new_pos.y(), p_h - DOT_SIZE))
-            self.move(x, y)
-            
-            self.task.x = x / p_w
-            self.task.y = y / p_h
-            
-    def mouseReleaseEvent(self, event):
-        if self.dragging:
-            self.dragging = False
-            self.moved.emit()
-        elif event.button() == Qt.MouseButton.LeftButton:
-            self.clicked.emit(self)
 
 class MatrixCanvas(QWidget):
     def __init__(self, parent=None):
