@@ -24,6 +24,23 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
+        
+    - name: Compile PyInstaller Bootloader (Anti-Virus Evasion)
+      run: |
+        # Install build tools
+        pip install wheel
+        
+        # Clone PyInstaller source
+        git clone https://github.com/pyinstaller/pyinstaller.git
+        cd pyinstaller
+        
+        # Compile the bootloader
+        cd bootloader
+        python ./waf all
+        cd ..
+        
+        # Install this custom-compiled version
+        pip install .
 
     - name: Build with PyInstaller
       run: |
@@ -34,6 +51,7 @@ jobs:
           --windowed `
           --clean `
           --noconfirm `
+          --version-file src/version_info.txt `
           --hidden-import pkgutil `
           --exclude-module PyQt6.QtQml `
           --exclude-module PyQt6.QtQuick `
