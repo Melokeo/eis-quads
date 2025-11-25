@@ -1,8 +1,9 @@
 import json
 import os
+from pathlib import Path
 from PyQt6.QtCore import Qt, QPoint, QPropertyAnimation, QEasingCurve, QEvent
 from PyQt6.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QApplication
-from config import UiConfig, STYLESHEET, DockSide
+from config import UiConfig, STYLESHEET, DockSide, get_storage_dir
 from tab import DraggableTab
 from matrix import MatrixCanvas
 
@@ -142,10 +143,14 @@ class SlideWindow(QWidget):
         self.resize(*size)
         self.layout_container.resize(*size)
             
+    def get_state_path(self):
+        return get_storage_dir() / "window_state.json"
+
     def load_state(self):
         try:
-            if os.path.exists("window_state.json"):
-                with open("window_state.json", "r") as f:
+            path = self.get_state_path()
+            if path.exists():
+                with open(path, "r") as f:
                     data = json.load(f)
                     self.move(data.get("x", 100), data.get("y", 100))
         except Exception:
@@ -222,6 +227,9 @@ class SlideWindow(QWidget):
 
     def closeEvent(self, event):
         # save current position before closing
-        with open("window_state.json", "w") as f:
-            json.dump({"x": self.x(), "y": self.y()}, f)
+        try:
+            with open(self.get_state_path(), "w") as f:
+                json.dump({"x": self.x(), "y": self.y()}, f)
+        except Exception:
+            pass
         super().closeEvent(event)

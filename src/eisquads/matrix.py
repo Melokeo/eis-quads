@@ -12,6 +12,7 @@ class MatrixCanvas(QFrame):
         super().__init__(parent)
         self.tasks = []
         self.dots = []
+        self.locked = False
         self.init_ui()
 
         # minimal add button
@@ -131,3 +132,9 @@ class MatrixCanvas(QFrame):
         # minimal labels
         painter.drawText(w - 30, cy - 5, "Urg")
         painter.drawText(cx + 5, 15, "Imp")
+
+    def set_locked(self, locked: bool):
+        self.locked = locked
+        # update cursor for all dots
+        for dot in self.dots:
+            dot.update_cursor()

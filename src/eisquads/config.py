@@ -1,5 +1,28 @@
 from enum import Enum
 from dataclasses import dataclass
+import sys
+import os
+from pathlib import Path
+
+def get_storage_dir():
+    app_name = "eisquads"
+    if sys.platform == "win32":
+        # Windows: Use %APPDATA% (Roaming)
+        base = os.getenv('APPDATA')
+        if base:
+            path = Path(base) / app_name
+        else:
+            path = Path.home() / f".{app_name}"
+    else:
+        # Linux/Mac: Use XDG_CONFIG_HOME or ~/.config
+        xdg = os.getenv('XDG_CONFIG_HOME')
+        if xdg:
+            path = Path(xdg) / app_name
+        else:
+            path = Path.home() / ".config" / app_name
+            
+    path.mkdir(parents=True, exist_ok=True)
+    return path
 
 # --- configuration & styling ---
 @dataclass

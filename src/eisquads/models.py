@@ -1,6 +1,8 @@
 import json
 import os
+from pathlib import Path
 from dataclasses import dataclass, asdict
+from config import get_storage_dir
 
 @dataclass
 class Task:
@@ -15,14 +17,17 @@ class Task:
         return asdict(self)
 
 class TaskManager:
-    FILE_NAME = "tasks.json"
+    @staticmethod
+    def get_storage_path():
+        return get_storage_dir() / "tasks.json"
 
     @staticmethod
     def load_tasks():
-        if not os.path.exists(TaskManager.FILE_NAME):
+        file_path = TaskManager.get_storage_path()
+        if not file_path.exists():
             return []
         try:
-            with open(TaskManager.FILE_NAME, 'r') as f:
+            with open(file_path, 'r') as f:
                 data = json.load(f)
                 # filter out completed tasks, they are history
                 all_tasks = [Task(**t) for t in data]
@@ -32,5 +37,6 @@ class TaskManager:
 
     @staticmethod
     def save_tasks(tasks):
-        with open(TaskManager.FILE_NAME, 'w') as f:
+        file_path = TaskManager.get_storage_path()
+        with open(file_path, 'w') as f:
             json.dump([t.to_dict() for t in tasks], f)
