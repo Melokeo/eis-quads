@@ -4,15 +4,16 @@ from dataclasses import dataclass
 # --- Configuration & Styling ---
 @dataclass
 class UiConfig:
-    APP_WIDTH = 350
-    APP_HEIGHT = 350
+    APP_WIDTH = 360
+    APP_HEIGHT = 250
     TAB_SIZE = 24  # Width or Height depending on orientation
     BG_COLOR = "#1e1e2e"
-    QUAD_LINES_COLOR = "#313244"
+    QUAD_LINES_COLOR = "#5C5E7E"
     TEXT_COLOR = "#cdd6f4"
     ACCENT_COLOR = "#89b4fa"
     DOT_COLOR = "#f38ba8"
     DOT_SIZE = 14
+    DOT_FONT = "Segoe UI"
 
 STYLESHEET = f"""
 QWidget {{

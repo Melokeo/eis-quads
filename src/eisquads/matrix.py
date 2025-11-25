@@ -1,13 +1,13 @@
 import uuid
 from PyQt6.QtCore import Qt, QPoint
 from PyQt6.QtGui import QColor, QPainter, QPen, QFont, QCursor
-from PyQt6.QtWidgets import QWidget, QPushButton, QDialog
+from PyQt6.QtWidgets import QWidget, QPushButton, QDialog, QFrame
 from config import UiConfig
 from models import Task, TaskManager
 from items import TaskDot
 from dialogs import NameInput, DetailPopup
 
-class MatrixCanvas(QWidget):
+class MatrixCanvas(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.tasks = []
@@ -90,15 +90,14 @@ class MatrixCanvas(QWidget):
         else:
             for dot in self.dots:
                 if dot.task.id == task.id:
-                    dot.update()
+                    dot.adjust_size()
                     break
         self.save_data()
 
     def paintEvent(self, event):
+        super().paintEvent(event)
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        
-        painter.fillRect(self.rect(), QColor(UiConfig.BG_COLOR))
         
         w, h = self.width(), self.height()
         cx, cy = w // 2, h // 2

@@ -1,5 +1,5 @@
 from PyQt6.QtCore import Qt, QPoint, QRect, pyqtSignal
-from PyQt6.QtGui import QColor, QPainter, QBrush, QFont
+from PyQt6.QtGui import QColor, QPainter, QBrush, QFont, QFontMetrics
 from PyQt6.QtWidgets import QWidget
 from config import UiConfig
 from models import Task
@@ -11,11 +11,21 @@ class TaskDot(QWidget):
     def __init__(self, task: Task, parent=None):
         super().__init__(parent)
         self.task = task
-        self.setFixedSize(120, 30)
         self.dragging = False
         self.offset = QPoint()
         self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.adjust_size()
         self.show()
+
+    def adjust_size(self):
+        font = QFont(UiConfig.DOT_FONT, 9)
+        fm = QFontMetrics(font)
+        label = self.task.title
+        if len(label) > 12: label = label[:12] + ".."
+        
+        width = UiConfig.DOT_SIZE + 8 + fm.horizontalAdvance(label) + 5
+        self.setFixedSize(int(width), 30)
+        self.update()
 
     def get_color(self):
         # determine quadrant based on current normalized position
@@ -48,11 +58,12 @@ class TaskDot(QWidget):
         
         # draw label
         painter.setPen(QColor(UiConfig.TEXT_COLOR))
-        font = QFont("Segoe UI", 9)
+        font = QFont(UiConfig.DOT_FONT, 9)
         painter.setFont(font)
         label = self.task.title
         if len(label) > 12: label = label[:12] + ".."
-        painter.drawText(QRect(UiConfig.DOT_SIZE + 4, 0, 100, 30), 
+        
+        painter.drawText(QRect(UiConfig.DOT_SIZE + 6, 0, self.width(), 30), 
                          Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, 
                          label)
 
