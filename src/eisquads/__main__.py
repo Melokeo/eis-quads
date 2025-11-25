@@ -169,22 +169,46 @@ class TaskDot(QWidget):
         if self.dragging:
             self.dragging = False
             
-            # snap to quadrant center if near border (0.5)
-            threshold = 0.05
-            snapped = False
-            
-            if abs(self.task.x - 0.5) < threshold:
-                self.task.x = 0.25 if self.task.x < 0.5 else 0.75
-                snapped = True
+            if self.parent():
+                p_w = self.parent().width()
+                p_h = self.parent().height()
                 
-            if abs(self.task.y - 0.5) < threshold:
-                self.task.y = 0.25 if self.task.y < 0.5 else 0.75
-                snapped = True
+                # Get current pixel positions
+                curr_x = self.x()
+                curr_y = self.y()
+                
+                # Define axis locations
+                axis_x = p_w // 2
+                axis_y = p_h // 2
+                
+                snapped = False
+                new_x = curr_x
+                new_y = curr_y
+                
+                # 1. Check Vertical Axis Overlap
+                # Logic: Left side is left of axis, Right side is right of axis
+                if curr_x < axis_x and (curr_x + DOT_SIZE) > axis_x:
+                    snapped = True
+                    # Decide direction based on where the center of the dot is
+                    if (curr_x + DOT_SIZE / 2) < axis_x:
+                        new_x = axis_x - DOT_SIZE - 2  # Push just left of axis
+                    else:
+                        new_x = axis_x + 2             # Push just right of axis
+
+                # 2. Check Horizontal Axis Overlap
+                if curr_y < axis_y and (curr_y + DOT_SIZE) > axis_y:
+                    snapped = True
+                    if (curr_y + DOT_SIZE / 2) < axis_y:
+                        new_y = axis_y - DOT_SIZE - 2  # Push just above axis
+                    else:
+                        new_y = axis_y + 2             # Push just below axis
             
-            if snapped and self.parent():
-                self.move(int(self.task.x * self.parent().width()), 
-                          int(self.task.y * self.parent().height()))
-                self.update() # ensure color updates after snap
+                if snapped:
+                    self.move(int(new_x), int(new_y))
+                    # Update normalized coordinates
+                    self.task.x = new_x / p_w
+                    self.task.y = new_y / p_h
+                    self.update() # Force color refresh
 
             self.moved.emit()
             
@@ -411,6 +435,30 @@ class DraggableTab(QFrame):
             else:
                 self.drag_ended.emit()
 
+    def contextMenuEvent(self, event):
+        menu = QMenu(self)
+        # Apply the app's style to the menu
+        menu.setStyleSheet(f"""
+            QMenu {{
+                background-color: {BG_COLOR}; 
+                color: {TEXT_COLOR}; 
+                border: 1px solid {ACCENT_COLOR};
+            }}
+            QMenu::item {{
+                padding: 5px 20px;
+            }}
+            QMenu::item:selected {{
+                background-color: {ACCENT_COLOR};
+                color: {BG_COLOR};
+            }}
+        """)
+        
+        close_action = QAction("Quit", self)
+        close_action.triggered.connect(QApplication.instance().quit)
+        menu.addAction(close_action)
+        
+        menu.exec(event.globalPos())
+
 # main window
 class SlideWindow(QWidget):
     def __init__(self):
@@ -616,6 +664,10 @@ class SlideWindow(QWidget):
             self.toggle_slide()
             return True
         return super().eventFilter(obj, event)
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key.Key_Escape:
+            QApplication.instance().quit()
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
