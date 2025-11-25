@@ -14,7 +14,7 @@ class UiConfig:
     DOT_COLOR = "#f38ba8"
     DOT_SIZE = 14
     DOT_FONT = "Segoe UI"
-    DOT_FONT_SIZE = 9
+    DOT_FONT_SIZE = 8
 
 STYLESHEET = f"""
 QWidget {{

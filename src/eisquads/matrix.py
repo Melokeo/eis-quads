@@ -45,14 +45,24 @@ class MatrixCanvas(QFrame):
         for dot in self.dots: dot.deleteLater()
         self.dots = []
         for task in self.tasks: self.add_dot_widget(task)
+        
+        # Final pass to resolve overlaps after all dots are added
+        for dot in self.dots:
+            dot.update_position()
 
     def add_dot_widget(self, task):
         dot = TaskDot(task, self)
-        dot.moved.connect(self.save_data)
+        dot.moved.connect(self.on_dot_moved)
         dot.clicked.connect(self.show_details)
         self.dots.append(dot)
         dot.update_position()
         dot.show()
+
+    def on_dot_moved(self):
+        # Update all dots to resolve overlaps dynamically
+        for dot in self.dots:
+            dot.update_position()
+        self.save_data()
 
     def add_new_task(self, x=0.5, y=0.5):
         # show minimal input dialog

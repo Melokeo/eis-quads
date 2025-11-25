@@ -26,16 +26,15 @@ class TaskDot(QWidget):
         
         p_w = self.parent().width()
         p_h = self.parent().height()
-        cx, cy = p_w // 2, p_h // 2
         
-        dx = int(self.task.x * p_w)
-        dy = int(self.task.y * p_h)
+        # Dot position (top-left of the dot itself)
+        dot_x = int(self.task.x * p_w)
+        dot_y = int(self.task.y * p_h)
         
+        ds = UiConfig.DOT_SIZE
         # Clamp dot to screen
-        dx = max(0, min(dx, p_w - UiConfig.DOT_SIZE))
-        dy = max(0, min(dy, p_h - UiConfig.DOT_SIZE))
-        
-        in_right = dx > cx
+        dot_x = max(0, min(dot_x, p_w - ds))
+        dot_y = max(0, min(dot_y, p_h - ds))
         
         font = QFont(UiConfig.DOT_FONT, UiConfig.DOT_FONT_SIZE)
         fm = QFontMetrics(font)
@@ -46,43 +45,101 @@ class TaskDot(QWidget):
         text_w = rect.width() + 5
         text_h = rect.height()
         
-        place_right = True
+        siblings = [c for c in self.parent().children() if isinstance(c, TaskDot) and c is not self and c.isVisible()]
         
-        if in_right:
-            if dx + UiConfig.DOT_SIZE + text_w <= p_w:
-                place_right = True
-            elif dx - text_w >= cx:
-                place_right = False
-            else:
-                place_right = True
-        else:
-            if dx - text_w >= 0:
-                place_right = False
-            elif dx + UiConfig.DOT_SIZE + text_w <= cx:
-                place_right = True
-            else:
-                place_right = False
-                
-        ds = UiConfig.DOT_SIZE
-        total_h = max(ds, text_h)
+        candidates = []
+        for p_type in ['right', 'left', 'top', 'bottom']:
+            candidates.append(self._create_candidate(p_type, dot_x, dot_y, text_w, text_h, ds))
+
+        best = None
+        min_score = float('inf')
         
-        if place_right:
-            self.dot_local_pos = QPoint(0, (total_h - ds)//2)
-            self.text_rect = QRect(ds + 5, 0, text_w, total_h)
-            w = ds + 5 + text_w
-            x = dx
-            self.text_align = Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter | Qt.TextFlag.TextWordWrap
-        else:
-            self.dot_local_pos = QPoint(text_w + 5, (total_h - ds)//2)
-            self.text_rect = QRect(0, 0, text_w, total_h)
-            w = text_w + 5 + ds
-            x = dx - text_w - 5
-            self.text_align = Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter | Qt.TextFlag.TextWordWrap
+        for cand in candidates:
+            score = 0
+            g = cand['geo']
             
-        y = dy - (total_h - ds)//2
+            # 1. Screen bounds penalty
+            if g.left() < 0: score += abs(g.left()) * 10
+            if g.top() < 0: score += abs(g.top()) * 10
+            if g.right() > p_w: score += (g.right() - p_w) * 10
+            if g.bottom() > p_h: score += (g.bottom() - p_h) * 10
+            
+            # 2. Overlap penalty
+            margin = 10  # stricter spacing
+            g_inflated = g.adjusted(-margin, -margin, margin, margin)
+            for sib in siblings:
+                if g_inflated.intersects(sib.geometry()):
+                    intersect = g_inflated.intersected(sib.geometry())
+                    area = intersect.width() * intersect.height()
+                    score += area * 5.0
+            
+            # 3. Preference penalty
+            if cand['type'] in ['top', 'bottom']:
+                score += 50
+                
+            if score < min_score:
+                min_score = score
+                best = cand
         
-        self.setGeometry(x, y, w, total_h)
-        self.update()
+        if best:
+            self.dot_local_pos = best['dot_local']
+            self.text_rect = best['text_rect']
+            self.text_align = best['align']
+            self.setGeometry(best['geo'])
+            self.update()
+
+    def _create_candidate(self, p_type, dx, dy, tw, th, ds):
+        pad = 5
+        if p_type in ['top', 'bottom']:
+            pad = 1  # Reduced padding for vertical layout
+
+        if p_type == 'right':
+            total_h = max(ds, th)
+            w = ds + pad + tw
+            h = total_h
+            x = dx
+            y = dy - (total_h - ds)//2
+            dot_local = QPoint(0, (total_h - ds)//2)
+            text_rect = QRect(ds + pad, 0, tw, total_h)
+            align = Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter | Qt.TextFlag.TextWordWrap
+            
+        elif p_type == 'left':
+            total_h = max(ds, th)
+            w = tw + pad + ds
+            h = total_h
+            x = dx - tw - pad
+            y = dy - (total_h - ds)//2
+            dot_local = QPoint(tw + pad, (total_h - ds)//2)
+            text_rect = QRect(0, 0, tw, total_h)
+            align = Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter | Qt.TextFlag.TextWordWrap
+            
+        elif p_type == 'top':
+            total_w = max(ds, tw)
+            w = total_w
+            h = th + pad + ds
+            x = dx - (total_w - ds)//2
+            y = dy - th - pad
+            dot_local = QPoint((total_w - ds)//2, th + pad)
+            text_rect = QRect(0, 0, total_w, th)
+            align = Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignBottom | Qt.TextFlag.TextWordWrap
+            
+        elif p_type == 'bottom':
+            total_w = max(ds, tw)
+            w = total_w
+            h = ds + pad + th
+            x = dx - (total_w - ds)//2
+            y = dy
+            dot_local = QPoint((total_w - ds)//2, 0)
+            text_rect = QRect(0, ds + pad, total_w, th)
+            align = Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop | Qt.TextFlag.TextWordWrap
+            
+        return {
+            'type': p_type,
+            'geo': QRect(int(x), int(y), int(w), int(h)),
+            'dot_local': dot_local,
+            'text_rect': text_rect,
+            'align': align
+        }
 
     def get_color(self):
         # determine quadrant based on current normalized position
@@ -162,6 +219,47 @@ class TaskDot(QWidget):
                 return axis_pos + 2
         return current_pos
 
+    def _resolve_dot_overlap(self, x, y, p_w, p_h):
+        siblings = [c for c in self.parent().children() if isinstance(c, TaskDot) and c is not self and c.isVisible()]
+        ds = UiConfig.DOT_SIZE
+        min_dist = ds
+        
+        # Simple iterative solver to push away from overlapping dots
+        for _ in range(5): # Try a few times to resolve
+            moved = False
+            for sib in siblings:
+                sib_x = int(sib.task.x * p_w)
+                sib_y = int(sib.task.y * p_h)
+                
+                dx = x - sib_x
+                dy = y - sib_y
+                dist_sq = dx*dx + dy*dy
+                
+                if dist_sq < min_dist*min_dist:
+                    # Overlap detected
+                    dist = (dist_sq)**0.5
+                    if dist == 0:
+                        dx = 1
+                        dy = 0
+                        dist = 1
+                    
+                    push = min_dist - dist + 1
+                    push_x = (dx / dist) * push
+                    push_y = (dy / dist) * push
+                    
+                    x += push_x
+                    y += push_y
+                    moved = True
+            
+            # Clamp to screen
+            x = max(0, min(x, p_w - ds))
+            y = max(0, min(y, p_h - ds))
+            
+            if not moved:
+                break
+                
+        return int(x), int(y)
+
     def mouseReleaseEvent(self, event):
         if self.dragging:
             self.dragging = False
@@ -176,6 +274,9 @@ class TaskDot(QWidget):
                 
                 new_x = self._resolve_overlap(curr_x, axis_x, UiConfig.DOT_SIZE)
                 new_y = self._resolve_overlap(curr_y, axis_y, UiConfig.DOT_SIZE)
+                
+                # Resolve dot overlap
+                new_x, new_y = self._resolve_dot_overlap(new_x, new_y, p_w, p_h)
                 
                 if new_x != curr_x or new_y != curr_y:
                     self.task.x = new_x / p_w
