@@ -211,6 +211,10 @@ class SlideWindow(QWidget):
         if event.key() == Qt.Key.Key_Escape:
             QApplication.instance().quit()
             return
+        
+        if event.key() == Qt.Key.Key_F5:
+            self.content.reload_tasks()
+            return
 
         text = event.text()
         if text:
@@ -229,6 +233,9 @@ class SlideWindow(QWidget):
                 self.key_buffer = ""
             elif self.key_buffer.endswith("free"):
                 self.content.set_locked(False)
+                self.key_buffer = ""
+            elif self.key_buffer.endswith("reload"):
+                self.content.reload_tasks()
                 self.key_buffer = ""
 
     def closeEvent(self, event):

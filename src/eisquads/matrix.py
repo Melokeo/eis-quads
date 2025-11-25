@@ -109,6 +109,10 @@ class MatrixCanvas(QFrame):
         self.refresh_dots()
         self.save_data()
 
+    def reload_tasks(self):
+        self.tasks = TaskManager.load_tasks()
+        self.refresh_dots()
+
     def paintEvent(self, event):
         super().paintEvent(event)
         painter = QPainter(self)
