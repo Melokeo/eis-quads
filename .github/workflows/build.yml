@@ -53,7 +53,7 @@ jobs:
         pyinstaller src/eisquads/__main__.py `
           --paths src/eisquads `
           --name eis-quads `
-          --onedir `
+          --onefile `
           --windowed `
           --clean `
           --noconfirm `
