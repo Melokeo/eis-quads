@@ -53,7 +53,7 @@ jobs:
         pyinstaller src/eisquads/__main__.py `
           --paths src/eisquads `
           --name eis-quads `
-          --onefile `
+          --onedir `
           --windowed `
           --clean `
           --noconfirm `
@@ -92,7 +92,7 @@ jobs:
 
     - name: Zip the Build
       run: |
-        Compress-Archive -Path dist/eis-quads.exe -DestinationPath eis-quads.zip
+        Compress-Archive -Path dist/eis-quads -DestinationPath eis-quads.zip
 
     - name: Upload Release Asset
       uses: softprops/action-gh-release@v1
