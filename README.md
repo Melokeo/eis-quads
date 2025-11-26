@@ -42,7 +42,8 @@ Load a new image by blindly typing `bg`, select img, then:
 - **Confirm**: Press `Enter` to save the background state and return to task management.
 
 ### Misc
-There is known problem with multiple monitor support. It flies everywhere.
+- **Anti-virus**: I hate windows defender as it always tag my app as unauthorized however i tried to modify.
+- There is known problem with **multiple monitor support**. It flies everywhere.
 
 ***
 
