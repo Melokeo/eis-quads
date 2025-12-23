@@ -33,6 +33,21 @@ class TaskManager:
                 data = json.load(f)
                 all_tasks = [Task(**t) for t in data]
                 
+                # Create a map for easy lookup
+                task_map = {t.id: t for t in all_tasks}
+
+                # Remove dependencies where both sides are completed
+                for t in all_tasks:
+                    if t.completed:
+                        new_deps = []
+                        for dep_id in t.dependencies:
+                            dep_task = task_map.get(dep_id)
+                            # If dependency exists and is completed, remove it
+                            if dep_task and dep_task.completed:
+                                continue
+                            new_deps.append(dep_id)
+                        t.dependencies = new_deps
+                
                 # Identify tasks that are depended upon by others
                 depended_upon_ids = set()
                 for t in all_tasks:
